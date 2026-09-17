@@ -1,0 +1,160 @@
+#!/usr/bin/env node
+// One run of the reader: fetch what is new since the last run, append it to the record, move the cursor.
+// Usage: node bin/reader.js config/calibnet.json
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { encodeFunctionData, decodeFunctionResult } from 'viem'
+import { makeRpc, toHex, epochToTime, quarterOf } from '../lib/chain.js'
+import { decodeActorEvent, decodeStreamsState, idToEthAddress } from '../lib/f02.js'
+import { abi, decodeLog, decodeCall, decodeRevert, plain } from '../lib/evm.js'
+
+// ponytail: no reorg handling. The reader stays LAG epochs behind the head; a deeper reorg can leave an
+// orphaned line in the append-only record. Upgrade: re-check the last N epochs on every run.
+const LAG = 5
+// ponytail: messages are found by downloading every block (~50 KB each). Fine at one run per 10 minutes;
+// if that gets slow, move to an indexer or Filecoin.StateListMessages on a node that allows it.
+const MAX_EPOCHS_PER_RUN = 120
+const ZERO = '0x0000000000000000000000000000000000000000'
+// f02 state fields that change every epoch and are not part of FIP-0118: left out of the record.
+const NOISY = ['ThisEpochRewardSmoothed', 'CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime']
+
+const cfg = JSON.parse(readFileSync(process.argv[2] ?? 'config/calibnet.json', 'utf8'))
+const rpc = makeRpc(cfg.rpcUrl)
+mkdirSync(cfg.dataDir, { recursive: true })
+const statusPath = join(cfg.dataDir, 'status.json')
+const recordsPath = join(cfg.dataDir, 'records.jsonl')
+const status = existsSync(statusPath) ? JSON.parse(readFileSync(statusPath, 'utf8')) : { lastEpoch: null, reads: {} }
+
+// address -> name, lower case. A contract still at the zero address is not deployed yet and is skipped.
+const contracts = new Map([['SRA', cfg.sra], ['SWA', cfg.swa]].filter(([, a]) => a !== ZERO).map(([n, a]) => [a.toLowerCase(), n]))
+const owners = new Map(Object.entries(cfg.owners).map(([n, a]) => [a.toLowerCase(), n]))
+
+const chainHead = Number(await rpc('eth_blockNumber'))
+const from = status.lastEpoch === null ? (cfg.startEpoch ?? chainHead - LAG - 20) : status.lastEpoch + 1
+const to = Math.min(chainHead - LAG, from + (cfg.maxEpochsPerRun ?? MAX_EPOCHS_PER_RUN) - 1)
+if (to < from) {
+  console.log(`nothing new: last epoch read ${status.lastEpoch}, chain head ${chainHead}`)
+  process.exit(0)
+}
+
+const records = []
+const rec = (kind, epoch, source, name, fields, extra = {}) =>
+  records.push({ kind, epoch, time: epochToTime(cfg, epoch), quarter: quarterOf(cfg, epoch), source, name, fields, ...extra })
+
+// 1. f02 actor events
+for (const ev of (await rpc('Filecoin.GetActorEventsRaw', [{ addresses: [cfg.f02], fromHeight: from, toHeight: to }])) ?? []) {
+  if (ev.reverted) continue
+  const extra = { msgCid: ev.msgCid?.['/'], raw: ev.entries }
+  let decoded
+  try {
+    decoded = decodeActorEvent(ev, cfg.addressPrefix)
+  } catch (err) {
+    decoded = { name: 'undecoded', fields: { error: err.message } } // the raw entries are still saved
+  }
+  rec('event', ev.height, 'f02', decoded.name, decoded.fields, extra)
+  if (decoded.name === 'claim-payout') await claimCheck(ev.height, decoded.fields)
+}
+
+// A Claim is checked twice: the event gives recipient and amount, the wallet balance must move by the same amount.
+async function claimCheck(epoch, { recipient, amountAttoFil }) {
+  const wallet = idToEthAddress(recipient.slice(2))
+  const [before, after] = await Promise.all([epoch - 1, epoch + 1].map((e) => rpc('eth_getBalance', [wallet, toHex(e)])))
+  const difference = (BigInt(after) - BigInt(before)).toString()
+  rec('read', epoch + 1, 'f02', 'claim check', { recipient, amountAttoFil, balanceBefore: BigInt(before).toString(), balanceAfter: BigInt(after).toString(), difference, matches: difference === amountAttoFil })
+}
+
+if (contracts.size) {
+  // 2. SRA and SWA events
+  for (const log of await rpc('eth_getLogs', [{ address: [...contracts.keys()], fromBlock: toHex(from), toBlock: toHex(to) }])) {
+    const { name, fields } = decodeLog(log)
+    rec('event', Number(log.blockNumber), contracts.get(log.address.toLowerCase()), name, fields, { tx: log.transactionHash, raw: { topics: log.topics, data: log.data } })
+  }
+
+  // 3. messages to the SRA, the SWA or one of their owner multisigs, with their result
+  for (let epoch = from; epoch <= to; epoch++) {
+    let block
+    try {
+      block = await rpc('eth_getBlockByNumber', [toHex(epoch), true])
+    } catch (err) {
+      if (/null round/.test(err.message)) continue // an epoch with no block
+      throw err
+    }
+    for (const tx of block?.transactions ?? []) {
+      const sentTo = tx.to?.toLowerCase()
+      if (!contracts.has(sentTo) && !owners.has(sentTo)) continue
+      const call = decodeCall(tx.input)
+      const target = call.innerTo ?? sentTo
+      if (!contracts.has(target)) continue // a multisig doing something unrelated
+      const receipt = await rpc('eth_getTransactionReceipt', [tx.hash])
+      // a Safe message can succeed while the call inside it fails: the Safe then emits ExecutionFailure
+      const innerFailed = receipt.logs.some((l) => decodeLog(l).name === 'ExecutionFailure')
+      const ok = receipt.status === '0x1' && !innerFailed
+      const error = ok ? undefined : await revertReason(call.innerTo ? sentTo : tx.from, target, call.innerData ?? tx.input, epoch)
+      rec('message', epoch, contracts.get(target), call.name, call.fields, { from: tx.from, via: owners.get(sentTo), ok, error, tx: tx.hash, raw: { input: tx.input } })
+    }
+  }
+}
+
+// The node does not keep the revert reason of a past message, so the call is replayed on the state of the epoch before.
+async function revertReason(sender, target, data, epoch) {
+  try {
+    await rpc('eth_call', [{ from: sender, to: target, data }, toHex(epoch - 1)])
+    return 'reverted (the replay did not revert)'
+  } catch (err) {
+    return decodeRevert(err.rpc?.data)
+  }
+}
+
+// 4. reads: values that leave no event. A read is recorded only when its value changed since the last run.
+async function read(source, name, fn) {
+  let fields
+  try {
+    fields = await fn()
+  } catch (err) {
+    fields = { error: err.message }
+  }
+  const json = JSON.stringify(fields)
+  if (status.reads[name] === json) return
+  status.reads[name] = json
+  rec('read', chainHead, source, name, fields)
+}
+
+async function view(address, functionName, args = []) {
+  const data = encodeFunctionData({ abi, functionName, args })
+  try {
+    const out = decodeFunctionResult({ abi, functionName, data: await rpc('eth_call', [{ to: address, data }, 'latest']) })
+    const outputName = abi.find((x) => x.type === 'function' && x.name === functionName).outputs[0].name || 'result'
+    return { [outputName]: plain(out) }
+  } catch (err) {
+    return { reverted: decodeRevert(err.rpc?.data) }
+  }
+}
+
+let streamsRoot
+await read('f02', 'f02 state', async () => {
+  const { State } = await rpc('Filecoin.StateReadState', [cfg.f02, null])
+  streamsRoot = Object.values(State).find((v) => v && typeof v === 'object' && '/' in v)?.['/'] // the one CID in the state
+  return Object.fromEntries(Object.entries(State).filter(([k]) => !NOISY.includes(k)))
+})
+if (streamsRoot) {
+  await read('f02', 'f02 streams', async () =>
+    decodeStreamsState(Buffer.from(await rpc('Filecoin.ChainReadObj', [{ '/': streamsRoot }]), 'base64'), cfg.addressPrefix))
+}
+for (const [label, address] of Object.entries(cfg.wallets)) {
+  await read('balance', `balance of ${label}`, async () => ({ address, attoFil: BigInt(await rpc('eth_getBalance', [address, 'latest'])).toString() }))
+}
+const sra = [...contracts].find(([, n]) => n === 'SRA')?.[0]
+if (sra) {
+  const q = quarterOf(cfg, chainHead)
+  await read('SRA', 'SRA admittedCount', () => view(sra, 'admittedCount'))
+  await read('SRA', 'SRA orchestratorCount', () => view(sra, 'orchestratorCount'))
+  for (const past of [q - 1, q - 2].filter((x) => x >= 1)) {
+    await read('SRA', `SRA aggregatedFilecoinPayVolume(${past})`, () => view(sra, 'aggregatedFilecoinPayVolume', [BigInt(past)]))
+  }
+}
+
+records.sort((a, b) => a.epoch - b.epoch)
+if (records.length) appendFileSync(recordsPath, records.map((r) => JSON.stringify(r)).join('\n') + '\n')
+const { network, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs } = cfg
+writeFileSync(statusPath, JSON.stringify({ network, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads }, null, 2))
+console.log(`epochs ${from}..${to} (chain head ${chainHead}): ${records.length} new records -> ${recordsPath}`)

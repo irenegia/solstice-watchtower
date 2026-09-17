@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solstice watchtower</title>
+<style>
+  :root { --bg:#fbfbf9; --fg:#1d1d1b; --muted:#6b6b66; --line:#dcdcd6; --card:#fff; --bad:#b3261e; --ok:#1a7f37; --warn-bg:#fff4d6; --accent:#0b57d0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#ecece8; --muted:#a0a09a; --line:#3a3a36; --card:#1f1f1d; --bad:#ff8a80; --ok:#7bd88f; --warn-bg:#4a3c10; --accent:#8ab4f8; } }
+  body { margin:0; padding:24px 16px 64px; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, sans-serif; }
+  main { max-width:1100px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:17px; margin:32px 0 8px; }
+  a { color:var(--accent); } .muted { color:var(--muted); } .bad { color:var(--bad); font-weight:600; } .ok { color:var(--ok); }
+  .banner { background:var(--warn-bg); padding:8px 12px; border-radius:6px; margin:12px 0; font-weight:600; }
+  .scroll { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:6px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; vertical-align:top; padding:6px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; white-space:nowrap; } tr:last-child td { border-bottom:0; }
+  td.nowrap { white-space:nowrap; } td.result { min-width:170px; max-width:260px; overflow-wrap:anywhere; } code, pre { font:12.5px ui-monospace, Menlo, monospace; }
+  pre { margin:6px 0 0; white-space:pre-wrap; word-break:break-all; color:var(--muted); }
+  details.quarter { margin:10px 0; } details.quarter > summary { cursor:pointer; font-weight:600; padding:6px 0; }
+  details.row > summary { cursor:pointer; list-style:none; } details.row > summary::-webkit-details-marker { display:none; }
+  .filters { display:flex; gap:16px; flex-wrap:wrap; margin:8px 0; font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Solstice watchtower</h1>
+  <div id="head" class="muted">loading…</div>
+  <div id="banner"></div>
+
+  <h2>1. Queued writes</h2>
+  <div class="muted">Writes waiting in the f02 pending-write queue. Time left runs in your browser.</div>
+  <div id="queue"></div>
+
+  <h2>2. What landed</h2>
+  <div class="filters">
+    <label>Source <select id="fSource"><option value="">all</option><option>f02</option><option>SRA</option><option>SWA</option></select></label>
+    <label><input type="checkbox" id="fBad"> only reverted messages</label>
+  </div>
+  <div id="landed"></div>
+
+  <h2>3. State</h2>
+  <div class="muted">Values that leave no event. Each line shows the last value read and when it last changed.</div>
+  <div id="state"></div>
+</main>
+
+<script>
+// The page only displays the record written by bin/reader.js. It decodes nothing itself.
+// The three views, each with the note shown on top. calibnet is the real watchtower record and needs no note.
+const NOTES = {
+  calibnet: '',
+  sample: 'SAMPLE DATA. Written by hand to test the page. Nothing here happened on chain.',
+  'real-test': 'REAL chain data, but NOT Solstice. On 2026-09-17 the reader was run once on an unrelated calibnet contract ' +
+    '(0x85e366cf9dd2c0ae37e963d9556f5f4718d6417c, epoch 4077698) to test that it reads real messages, finds the reverted ones and gets their reason. ' +
+    'Names show as unknown(0x…) because the decoder only knows the SRA and SWA signatures. The source column says "SRA" only because ' +
+    'the test put this contract in the SRA slot of the config. The message links open real transactions.',
+}
+const requested = new URLSearchParams(location.search).get('data')
+const dataset = requested in NOTES ? requested : 'calibnet'
+const dir = `data/${dataset}/`
+const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const utc = (iso) => iso.replace('T', ' ').slice(0, 16) + ' UTC'
+
+// Display units. The raw integer is always in the expanded row.
+const E18 = 10n ** 18n
+const scaled = (v, div, digits) => { const n = BigInt(v); const s = (n < 0n ? -n : n) * 10n ** BigInt(digits) / div; const t = s.toString().padStart(digits + 1, '0'); return (n < 0n ? '-' : '') + t.slice(0, -digits) + '.' + t.slice(-digits) }
+function show(key, v) {
+  if (v === null || v === undefined) return '–'
+  if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${k}: ${show(k, x)}`).join(', ')
+  if (/^-?\d+$/.test(v)) {
+    if (/attoFil$/i.test(key) || ['difference', 'balanceBefore', 'balanceAfter'].includes(key)) return scaled(v, E18, 4) + ' FIL'
+    if (['volume', 'usd', 'totalUsd', 'fpv', 'value', 'base'].includes(key)) return scaled(v, E18, 2) + ' USD'
+    if (['vStart', 'floor', 'cap', 'share'].includes(key)) return scaled(v, 10n ** 16n, 2) + '%'
+  }
+  return String(v)
+}
+const summary = (fields) => Object.entries(fields ?? {}).map(([k, v]) => `${esc(k)}: ${esc(show(k, v))}`).join(' · ')
+
+// FIP-0118 §2.4.1 ComputeWeight: clamp(v_start + slope * (e - t_start), floor, cap). Same formula as lib/f02.js.
+function weightNow(w, epoch) {
+  const x = BigInt(w.vStart) + BigInt(w.slope) * BigInt(epoch - w.tStart)
+  const lo = BigInt(w.floor), hi = BigInt(w.cap)
+  return x < lo ? lo : x > hi ? hi : x
+}
+
+function timeLeft(epochs, epochSeconds) {
+  if (epochs <= 0) return '<span class="muted">effective epoch passed</span>'
+  const min = Math.round(epochs * epochSeconds / 60)
+  return min >= 1440 ? `${Math.floor(min / 1440)} d ${Math.floor(min % 1440 / 60)} h` : `${Math.floor(min / 60)} h ${min % 60} min`
+}
+
+const slot = (w) => `${w.op}|${w.streamId ?? ''}|${w.effectiveEpoch}`
+
+async function main() {
+  const [status, text] = await Promise.all([fetch(dir + 'status.json').then((r) => r.json()), fetch(dir + 'records.jsonl').then((r) => r.text())])
+  const records = text.split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.epoch - b.epoch)
+  const nowEpoch = () => Math.floor((Date.now() / 1000 - status.genesisTimestamp) / status.epochSeconds)
+  const quarterStart = (q) => status.activationEpoch + (q - 1) * status.epochsPerQuarter
+  const epochTime = (e) => new Date((status.genesisTimestamp + e * status.epochSeconds) * 1000).toISOString()
+  const quarterNow = status.activationEpoch && nowEpoch() >= status.activationEpoch ? Math.floor((nowEpoch() - status.activationEpoch) / status.epochsPerQuarter) + 1 : 0
+
+  $('head').innerHTML = `${esc(status.network)} · last epoch read ${status.lastEpoch} (${utc(epochTime(status.lastEpoch))}) · ` +
+    (quarterNow ? `quarter ${quarterNow} now` : 'before activation') +
+    ` · <a href="${dir}records.jsonl">record file</a> · data: <a href="?">calibnet</a> | <a href="?data=sample">sample</a> | <a href="?data=real-test">real test</a>`
+  if (NOTES[dataset]) $('banner').innerHTML = `<div class="banner">${esc(NOTES[dataset])}</div>`
+
+  // 1. queued writes: from the f02 state when the reader has it, and rebuilt from events as a cross-check
+  const fromEvents = new Map()
+  for (const r of records) {
+    if (r.source !== 'f02' || r.kind !== 'event' || !r.name.startsWith('write-')) continue
+    const key = `${r.fields.op}|${r.fields.streamId ?? ''}|${r.fields.effectiveEpoch}`
+    if (r.name === 'write-queued') fromEvents.set(key, { ...r.fields, queuedAt: r.epoch, msgCid: r.msgCid })
+    else fromEvents.delete(key)
+  }
+  const pendingFromEvents = [...fromEvents.values()].filter((w) => w.effectiveEpoch > status.lastEpoch)
+  const streamsRead = records.filter((r) => r.name === 'f02 streams' && !r.fields.error).at(-1)
+  const queue = streamsRead ? streamsRead.fields.pendingWrites.map((w) => ({ ...w, ...(fromEvents.get(slot(w)) ?? {}) })) : pendingFromEvents
+  let queueHtml = ''
+  if (streamsRead) {
+    const a = streamsRead.fields.pendingWrites.map(slot).sort().join(), b = pendingFromEvents.map(slot).sort().join()
+    if (a !== b) queueHtml += '<div class="banner">The queue read from the f02 state and the queue rebuilt from the events differ. Check both in the record file.</div>'
+  }
+  queueHtml += queue.length === 0 ? `<p>No queued writes at epoch ${status.lastEpoch}.</p>` :
+    `<div class="scroll"><table><tr><th>op</th><th>stream-id</th><th>effective epoch</th><th>time left</th><th>payload</th><th>queued</th></tr>` +
+    queue.sort((x, y) => x.effectiveEpoch - y.effectiveEpoch).map((w) => `<tr>
+      <td>${esc(w.op)}${w.cancellable === false ? '<br><span class="muted">cannot be cancelled</span>' : ''}</td>
+      <td>${w.streamId ?? '<span class="muted">schedule-wide</span>'}</td>
+      <td class="nowrap">${w.effectiveEpoch}<br><span class="muted">${utc(epochTime(w.effectiveEpoch))}</span></td>
+      <td class="nowrap" data-effective="${w.effectiveEpoch}"></td>
+      <td><details class="row"><summary>${summary(w.payload)}</summary><pre>${esc(JSON.stringify(w.payload, null, 2))}</pre></details></td>
+      <td class="nowrap">${w.queuedAt ? `epoch ${w.queuedAt}` : '–'}${w.msgCid ? `<br><a href="${msgLink(w.msgCid)}">message</a>` : ''}</td></tr>`).join('') + '</table></div>'
+  $('queue').innerHTML = queueHtml
+  const tick = () => document.querySelectorAll('[data-effective]').forEach((td) => { td.innerHTML = timeLeft(td.dataset.effective - nowEpoch(), status.epochSeconds) })
+  tick(); setInterval(tick, 30000)
+
+  // 2. what landed: events, messages and claim checks, one table per quarter, newest quarter first
+  function renderLanded() {
+    const source = $('fSource').value, onlyBad = $('fBad').checked
+    const rows = records.filter((r) => (r.kind !== 'read' || r.name === 'claim check') && (!source || r.source === source) && (!onlyBad || r.ok === false))
+    const quarters = [...new Set(rows.map((r) => r.quarter))].sort((a, b) => b - a)
+    $('landed').innerHTML = rows.length === 0 ? '<p>Nothing yet.</p>' : quarters.map((q, i) => {
+      const label = q === 0 ? 'Before activation' :
+        `Quarter ${q} · ${utc(epochTime(quarterStart(q)))} to ${utc(epochTime(quarterStart(q + 1)))} · rehearsal plan: ${q === 1 ? 'Activation day' : `Q${q - 1} cycle`}`
+      const body = rows.filter((r) => r.quarter === q).map((r) => `<tr>
+        <td class="nowrap">${utc(r.time)}<br><span class="muted">epoch ${r.epoch}</span></td>
+        <td class="nowrap">${esc(r.source)}<br><span class="muted">${r.kind}</span></td>
+        <td><details class="row"><summary><b>${esc(r.name)}</b> ${summary(r.fields)}</summary><pre>${esc(JSON.stringify(r, null, 2))}</pre></details>
+          ${r.from ? `<span class="muted">from ${esc(r.from)}${r.via ? ` via ${esc(r.via)}` : ''}</span>` : ''}</td>
+        <td class="result">${r.kind === 'message' ? (r.ok ? '<span class="ok">ok</span>' : `<span class="bad">reverted</span><br>${esc(r.error ?? '')}`) : r.name === 'claim check' ? (r.fields.matches ? '<span class="ok">matches</span>' : '<span class="bad">does not match</span>') : ''}</td>
+        <td class="nowrap">${r.tx ? `<a href="${msgLink(r.tx)}">message</a>` : r.msgCid ? `<a href="${msgLink(r.msgCid)}">message</a>` : ''}</td></tr>`).join('')
+      return `<details class="quarter" ${i === 0 ? 'open' : ''}><summary>${label} <span class="muted">(${rows.filter((r) => r.quarter === q).length})</span></summary>
+        <div class="scroll"><table><tr><th>time</th><th>source</th><th>what</th><th>result</th><th>link</th></tr>${body}</table></div></details>`
+    }).join('')
+  }
+  $('fSource').onchange = $('fBad').onchange = renderLanded
+  renderLanded()
+
+  // 3. state: the last value of every read
+  const last = new Map()
+  for (const r of records) if (r.kind === 'read' && r.name !== 'claim check') last.set(r.name, r)
+  $('state').innerHTML = `<div class="scroll"><table><tr><th>read</th><th>value</th><th>last changed</th></tr>` + [...last.values()].map((r) => {
+    let value = summary(r.fields)
+    if (r.name === 'f02 streams' && !r.fields.error) value = r.fields.streams.map((s) =>
+      `stream ${s.id}: weight now <b>${scaled(weightNow(s.weight, nowEpoch()), 10n ** 16n, 2)}%</b>` +
+      (s.distribution ? ` · share map: ${s.distribution.shares.map((x) => `${esc(x.recipient)} ${scaled(x.share, 10n ** 16n, 2)}%`).join(', ') || 'empty'}` : ' · IMPLICIT')).join('<br>')
+    return `<tr><td class="nowrap">${esc(r.name)}</td><td><details class="row"><summary>${value}</summary><pre>${esc(JSON.stringify(r.fields, null, 2))}</pre></details></td>
+      <td class="nowrap">${utc(r.time)}<br><span class="muted">epoch ${r.epoch}</span></td></tr>`
+  }).join('') + '</table></div>'
+}
+
+// ponytail: one explorer, hard-coded. Filfox accepts both 0x transaction hashes and message CIDs.
+const msgLink = (id) => `https://calibration.filfox.info/en/message/${id}`
+
+main().catch((err) => { $('head').textContent = `Could not load ${dir}: ${err.message}` })
+</script>
+</body>
+</html>

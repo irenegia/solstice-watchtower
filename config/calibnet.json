@@ -1,0 +1,28 @@
+{
+  "network": "calibnet",
+  "rpcUrl": "https://api.calibration.node.glif.io/rpc/v1",
+  "addressPrefix": "t",
+  "genesisTimestamp": 1667326380,
+  "epochSeconds": 30,
+
+  "activationEpoch": 0,
+  "epochsPerQuarter": 2880,
+  "swaTimelockEpochs": 720,
+
+  "f02": "t02",
+  "sra": "0x0000000000000000000000000000000000000000",
+  "swa": "0x0000000000000000000000000000000000000000",
+  "owners": {
+    "sraOwner1": "0xFb1B58925947E52B3f75BAc3D9fB5325cfb36371",
+    "sraOwner2": "0x6c724FF811f51945d95872CF99FBd3fF63f7cFa2",
+    "swaOwner1": "0x024a3c8CCA435db64D2dfa0f903E4823A5eBdf63",
+    "swaOwner2": "0x4d6db5600c908b3C9b9888cFef43f27F38b203e9"
+  },
+  "wallets": {
+    "f099 (burn)": "0xff00000000000000000000000000000000000063",
+    "initialOrchestrator": "0x97A90f5696be5E3C8d3752C92Adac287c2b4484e"
+  },
+
+  "dataDir": "site/data/calibnet",
+  "startEpoch": null
+}
