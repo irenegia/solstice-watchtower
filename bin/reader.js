@@ -44,8 +44,14 @@ const records = []
 const rec = (kind, epoch, source, name, fields, extra = {}) =>
   records.push({ kind, epoch, time: epochToTime(cfg, epoch), quarter: quarterOf(cfg, epoch), source, name, fields, ...extra })
 
-// 1. f02 actor events
-for (const ev of (await rpc('Filecoin.GetActorEventsRaw', [{ addresses: [cfg.f02], fromHeight: from, toHeight: to }])) ?? []) {
+// 1. f02 actor events. A node can have this API switched off; that is recorded, and the run goes on.
+let f02Events = []
+try {
+  f02Events = (await rpc('Filecoin.GetActorEventsRaw', [{ addresses: [cfg.f02], fromHeight: from, toHeight: to }])) ?? []
+} catch (err) {
+  rec('gap', from, 'reader', 'f02 events could not be read', { fromEpoch: from, toEpoch: to, reason: err.message.slice(0, 160) })
+}
+for (const ev of f02Events) {
   if (ev.reverted) continue
   const extra = { msgCid: ev.msgCid?.['/'], raw: ev.entries }
   let decoded

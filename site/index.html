@@ -66,6 +66,11 @@ const NOTES = {
     '(0x85e366cf9dd2c0ae37e963d9556f5f4718d6417c, epoch 4077698) to test that it reads real messages, finds the reverted ones and gets their reason. ' +
     'Names show as unknown(0x…) because the decoder only knows the SRA and SWA signatures. The source column says "SRA" only because ' +
     'the test put this contract in the SRA slot of the config. The message links open real transactions.',
+  'butterfly-alpha': 'REAL Solstice data from a test network that no longer exists. Butterflynet "alpha" ran from 2026-09-17 20:04 UTC until its ' +
+    'reset on 2026-09-18, with FIP-0118 active from epoch 90, 2-hour quarters and a 20-minute SWA_TIMELOCK. rvagg ran a test script on it: almost every ' +
+    'SRA, SWA and f02 action. Read once on 2026-09-18, before the reset. This node had the actor events API off, so the record has NO f02 events ' +
+    '(write-queued, claim-payout); the f02 state and the messages sent to f02 are there. Quarter boundaries are off by one epoch (see config/butterfly-alpha.json). ' +
+    'The message links do not work: butterflynet has no block explorer.',
 }
 const requested = new URLSearchParams(location.search).get('data')
 const dataset = requested in NOTES ? requested : 'calibnet'
@@ -112,7 +117,7 @@ async function main() {
 
   $('head').innerHTML = `${esc(status.network)} · last epoch read ${status.lastEpoch} (${utc(epochTime(status.lastEpoch))}) · ` +
     (quarterNow ? `quarter ${quarterNow} now` : 'before activation') +
-    ` · <a href="${dir}records.jsonl">record file</a> · data: <a href="?">calibnet</a> | <a href="?data=sample">sample</a> | <a href="?data=real-test">real test</a>`
+    ` · <a href="${dir}records.jsonl">record file</a> · data: <a href="?">calibnet</a> | <a href="?data=sample">sample</a> | <a href="?data=real-test">real test</a> | <a href="?data=butterfly-alpha">butterfly alpha</a>`
   if (NOTES[dataset]) $('banner').innerHTML = `<div class="banner">${esc(NOTES[dataset])}</div>`
   $('head').innerHTML += ` · record from ${from}`
   // Rule: a reader that stopped must be visible. The live read below does not depend on the reader.

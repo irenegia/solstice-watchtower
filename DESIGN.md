@@ -97,6 +97,18 @@ calls from a web page (`access-control-allow-origin: *`, checked 2026-09-18 on t
   deployment blocks (SRA 4078418, SWA 4078422). It decoded `Upgraded`, `OwnerAdded` (twice), `Initialized` and,
   for the SRA, `OrchestratorAdmitted` with the identity and wallet of `deployments.json`. The SRA deployment
   message was checked by hand on Filfox: height 4078418, status OK, method `CreateExternal`.
+- First real f02 data, 2026-09-18: the reader was run once over butterflynet "alpha" (lotus-infra issue #1654;
+  genesis 2026-09-17 20:04 UTC, FIP-0118 active from epoch 90, rvagg's test run; overwritten by a reset the same
+  evening), with the ok of BigLep (lotus-infra PR #1655). 318 records, kept in `site/data/butterfly-alpha/` as
+  the only copy, shown as the page's view `?data=butterfly-alpha`. What it proved on real data: the decoding of
+  the state behind `streams_root` (three streams, share maps, accrued amounts); messages sent to f02 itself
+  (7 `Claim`, 3 `SetShares`, 1 `ReplaceAddress`); the two-multisig pattern (`Submitted`, `Approved`, `Rejected`);
+  a real f02 rejection (`quarterlyGateCheck` failed with `StepWeightRecordsFailed(16)` at epoch 2563, passed
+  at 2616 after a stream was removed). Three hand checks inside the record agreed: the service stream's weight
+  (35%, t_start 2400) against the gate check of quarter 10 (steps 5); `SharesSubmitted` for quarter 10 (1
+  recipient, 250,000 USD) against the share map (1 row) and against `VolumePosted`; `aggregatedFilecoinPayVolume(10)`
+  read as 250,000 USD. Not proved there: f02 events (the actor events API was off on that node; it is on from
+  the next reset), and nothing could be compared with a block explorer (butterflynet has none).
 - Still not testable on calibnet before its activation: the real f02 event bytes from the node, the state
   behind `streams_root` on real data, the multisig message path. First job after deployment: check three
   records by hand against a block explorer.
