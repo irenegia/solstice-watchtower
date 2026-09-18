@@ -1,0 +1,34 @@
+# Runs the reader every 10 minutes and commits the record. It only reads from the public calibnet endpoint;
+# it holds no key and no secret. Rules for when it fails are in DESIGN.md ("The scheduled job").
+name: read
+on:
+  schedule:
+    - cron: '*/10 * * * *' # GitHub may start scheduled jobs late; the reader catches up from its last epoch
+  workflow_dispatch: # also startable by hand from the Actions tab
+
+permissions:
+  contents: write # to commit the record
+
+concurrency:
+  group: read # never two readers at once: they would write the same epochs twice
+  cancel-in-progress: false
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node bin/reader.js config/calibnet.json
+      - name: Commit the record if it changed
+        run: |
+          git config user.name "watchtower reader"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/data/calibnet
+          git diff --cached --quiet || git commit -m "record: $(jq -r .lastEpoch site/data/calibnet/status.json)"
+          git push
