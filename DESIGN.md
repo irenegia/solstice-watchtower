@@ -66,9 +66,28 @@ differ, the page says so.
   messages and revert reasons on real data before the SRA and SWA exist. Its output (one run, 2026-09-17,
   epoch 4077698, 128 records, 11 reverted) is the page's third view, `?data=real-test`. One reverted record
   was checked by hand against Filfox on 2026-09-17: same epoch, status `SysErrContractReverted`.
+  Correction 2026-09-18: the first version of the reader got the reason by replaying the call, and the replay
+  left out the message's `value`, so it reported a wrong reason (`Error(Incorrect fee amount)`). The reader now
+  takes the reason from the on-chain receipt (`Filecoin.StateSearchMsg`, field `Return`) and replays only the
+  inner call of a multisig message. The 11 reverted records of this view were re-read from their receipts:
+  custom error `0x9514f828`, which this decoder does not know because the contract is unrelated.
 - Cannot be tested before the contracts are on calibnet: the real f02 event bytes from the node, the state
   behind `streams_root` on real data, the multisig message path. First job after deployment: check three
   records by hand against a block explorer.
+
+## Known limits of the PoC
+
+What can be observed on chain, for every action, is in [OBSERVABILITY.md](OBSERVABILITY.md). These two limits
+are in this code, not in the chain:
+
+1. The reader does not read messages sent to f02. It reads messages sent to the SRA, the SWA and their owner
+   multisigs. `Claim` is sent to f02 directly, so a `Claim` that pays nothing (no `claim-payout` event) or
+   that fails is not recorded. Fix: add f02 to the addresses whose messages are read.
+2. The reader must not stop for long. It finds messages by reading every block, and the public calibnet
+   endpoint keeps full blocks for only 17 hours to 2 days (measured 2026-09-17: a block 2,000 epochs old was
+   served, one 6,000 epochs old was not). Messages from a longer gap are lost. This matters most for
+   `SetAdmittedLists` and `SetPricingParams`, whose event is the only record of the values. How long the
+   endpoint keeps events was not measured.
 
 ## Later steps (not built)
 

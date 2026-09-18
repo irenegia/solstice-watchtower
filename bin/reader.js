@@ -3,6 +3,7 @@
 // Usage: node bin/reader.js config/calibnet.json
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, decodeFunctionResult } from 'viem'
 import { makeRpc, toHex, epochToTime, quarterOf } from '../lib/chain.js'
 import { decodeActorEvent, decodeStreamsState, idToEthAddress } from '../lib/f02.js'
@@ -89,19 +90,30 @@ if (contracts.size) {
       // a Safe message can succeed while the call inside it fails: the Safe then emits ExecutionFailure
       const innerFailed = receipt.logs.some((l) => decodeLog(l).name === 'ExecutionFailure')
       const ok = receipt.status === '0x1' && !innerFailed
-      const error = ok ? undefined : await revertReason(call.innerTo ? sentTo : tx.from, target, call.innerData ?? tx.input, epoch)
+      // A direct call: the chain keeps its revert reason in the receipt. A call sent through a multisig: the
+      // receipt holds the multisig's own result, so the reason of the call inside it needs a replay.
+      const error = ok ? undefined : call.innerTo ? await replayReason(sentTo, target, call.innerData, call.innerValue, epoch) : await receiptReason(tx.hash)
       rec('message', epoch, contracts.get(target), call.name, call.fields, { from: tx.from, via: owners.get(sentTo), ok, error, tx: tx.hash, raw: { input: tx.input } })
     }
   }
 }
 
-// The node does not keep the revert reason of a past message, so the call is replayed on the state of the epoch before.
-async function revertReason(sender, target, data, epoch) {
+// The reason as stored on chain: the message receipt's Return is a CBOR byte string holding the revert data.
+async function receiptReason(txHash) {
+  const cid = await rpc('Filecoin.EthGetMessageCidByTransactionHash', [txHash])
+  const found = await rpc('Filecoin.StateSearchMsg', [null, cid, -1, true])
+  const ret = found?.Receipt?.Return
+  return decodeRevert(ret ? '0x' + Buffer.from(dagCbor.decode(Buffer.from(ret, 'base64'))).toString('hex') : undefined)
+}
+
+// ponytail: the replay runs on the state of the epoch before, so another message in the same epoch can change
+// the outcome; the result is labeled as a replay for that reason.
+async function replayReason(sender, target, data, value, epoch) {
   try {
-    await rpc('eth_call', [{ from: sender, to: target, data }, toHex(epoch - 1)])
-    return 'reverted (the replay did not revert)'
+    await rpc('eth_call', [{ from: sender, to: target, data, value: toHex(value ?? 0) }, toHex(epoch - 1)])
+    return 'replay did not revert'
   } catch (err) {
-    return decodeRevert(err.rpc?.data)
+    return `${decodeRevert(err.rpc?.data)} (from a replay of the inner call)`
   }
 }
 
