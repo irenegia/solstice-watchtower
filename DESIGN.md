@@ -126,8 +126,10 @@ are in this code, not in the chain:
    - The page warns. If the newest read in the record is more than 30 minutes old, the header turns red:
      "The reader has not run since HH:MM UTC. The history below may be incomplete." The live read of f02
      keeps working, it does not depend on the job.
-   - The job catches up by itself. Each run starts from the last epoch it finished and reads at most 120
-     epochs, so a short stop heals over the next runs.
+   - The job catches up by itself. Each run starts from the last epoch it finished and reads at most 720
+     epochs (6 hours of chain), so one run heals a stop of up to 6 hours. The limit was 120 epochs until
+     2026-09-18. That day GitHub started the job once in the first 5.5 hours (its scheduler is "best effort"),
+     and with runs an hour or more apart a 1-hour limit meant the record fell further behind on every run.
    - A gap that cannot be healed is recorded, not hidden. If the endpoint no longer serves the blocks of the
      gap (limit 2 above), the job writes one record "epochs X to Y could not be read", and the page shows it
      in the history, so silence is never taken for "nothing happened".

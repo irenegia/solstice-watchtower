@@ -14,7 +14,9 @@ import { abi, decodeLog, decodeCall, decodeRevert, plain } from '../lib/evm.js'
 const LAG = 5
 // ponytail: messages are found by downloading every block (~50 KB each). Fine at one run per 10 minutes;
 // if that gets slow, move to an indexer or Filecoin.StateListMessages on a node that allows it.
-const MAX_EPOCHS_PER_RUN = 120
+// 720 epochs = 6 hours of chain. It was 120 (1 hour) until 2026-09-18: GitHub then started the job about once an
+// hour or less, so each run read less chain than had passed and the record fell behind after every late run.
+const MAX_EPOCHS_PER_RUN = 720
 const ZERO = '0x0000000000000000000000000000000000000000'
 // f02 state fields that change every epoch and are not part of FIP-0118: left out of the record.
 const NOISY = ['ThisEpochRewardSmoothed', 'CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime']
