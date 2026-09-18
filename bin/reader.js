@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, decodeFunctionResult } from 'viem'
 import { makeRpc, toHex, epochToTime, quarterOf } from '../lib/chain.js'
-import { decodeActorEvent, decodeStreamsState, idToEthAddress } from '../lib/f02.js'
+import { decodeActorEvent, decodeStreamsState, idToEthAddress } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert, plain } from '../lib/evm.js'
 
 // ponytail: no reorg handling. The reader stays LAG epochs behind the head; a deeper reorg can leave an
@@ -64,6 +64,8 @@ async function claimCheck(epoch, { recipient, amountAttoFil }) {
   rec('read', epoch + 1, 'f02', 'claim check', { recipient, amountAttoFil, balanceBefore: BigInt(before).toString(), balanceAfter: BigInt(after).toString(), difference, matches: difference === amountAttoFil })
 }
 
+const unreadable = [] // epochs whose block the node could not serve; recorded as a gap, never hidden
+
 if (contracts.size) {
   // 2. SRA and SWA events
   for (const log of await rpc('eth_getLogs', [{ address: [...contracts.keys()], fromBlock: toHex(from), toBlock: toHex(to) }])) {
@@ -78,7 +80,8 @@ if (contracts.size) {
       block = await rpc('eth_getBlockByNumber', [toHex(epoch), true])
     } catch (err) {
       if (/null round/.test(err.message)) continue // an epoch with no block
-      throw err
+      unreadable.push({ epoch, reason: err.message.slice(0, 160) }) // usually: the node no longer keeps this block
+      continue
     }
     for (const tx of block?.transactions ?? []) {
       const sentTo = tx.to?.toLowerCase()
@@ -96,6 +99,46 @@ if (contracts.size) {
       rec('message', epoch, contracts.get(target), call.name, call.fields, { from: tx.from, via: owners.get(sentTo), ok, error, tx: tx.hash, raw: { input: tx.input } })
     }
   }
+}
+
+// 3b. messages sent to f02 itself (Claim, and any direct call of a stream method). These are native Filecoin
+// messages, so they are not in the Eth blocks above. Only from the activation epoch on: before it, f02 has no
+// such methods. ponytail: two more requests per epoch; drop when an index serves messages by address.
+// Method numbers: solstice src/lib/FVMRewardMethod.sol (FRC-0042 hashes of the method names).
+const F02_METHODS = { 386660827: 'RegisterStream', 1623858416: 'RemoveStream', 3362570548: 'SetWeightRecords', 3951753085: 'StepWeightRecords', 3872725033: 'SetDistribution', 187585191: 'CancelPending', 2414422607: 'SetShares', 4045527845: 'Claim', 3068846150: 'ReplaceAddress' }
+const f02Id = cfg.f02.slice(1) // "t02" and "f02" name the same actor
+for (let epoch = Math.max(from, cfg.activationEpoch || Infinity); epoch <= to; epoch++) {
+  let messages
+  try {
+    const tipset = await rpc('Filecoin.ChainGetTipSetByHeight', [epoch, null])
+    if (tipset.Height !== epoch) continue // a null round: the node answers with the tipset before it
+    messages = await rpc('Filecoin.ChainGetMessagesInTipset', [tipset.Cids])
+  } catch (err) {
+    unreadable.push({ epoch, reason: err.message.slice(0, 160) })
+    continue
+  }
+  for (const { Cid, Message: m } of messages ?? []) {
+    if (m.To.slice(1) !== f02Id) continue
+    const receipt = (await rpc('Filecoin.StateSearchMsg', [null, Cid, -1, true]))?.Receipt
+    let params
+    try {
+      params = m.Params ? plainCbor(dagCbor.decode(Buffer.from(m.Params, 'base64'))) : null
+    } catch {
+      params = m.Params // kept as sent
+    }
+    rec('message', epoch, 'f02', F02_METHODS[m.Method] ?? `method ${m.Method}`, { params }, { from: m.From, ok: receipt?.ExitCode === 0, error: receipt?.ExitCode ? `exit code ${receipt.ExitCode}` : undefined, msgCid: Cid['/'] })
+  }
+}
+function plainCbor(v) {
+  return v instanceof Uint8Array ? '0x' + Buffer.from(v).toString('hex') : typeof v === 'bigint' ? v.toString() : Array.isArray(v) ? v.map(plainCbor) : v
+}
+
+// Rule: a gap that cannot be read is recorded, not hidden. Consecutive epochs become one record.
+for (let i = 0; i < unreadable.length; ) {
+  let j = i
+  while (j + 1 < unreadable.length && unreadable[j + 1].epoch === unreadable[j].epoch + 1) j++
+  rec('gap', unreadable[i].epoch, 'reader', 'could not be read', { fromEpoch: unreadable[i].epoch, toEpoch: unreadable[j].epoch, reason: unreadable[i].reason })
+  i = j + 1
 }
 
 // The reason as stored on chain: the message receipt's Return is a CBOR byte string holding the revert data.
@@ -167,6 +210,7 @@ if (sra) {
 
 records.sort((a, b) => a.epoch - b.epoch)
 if (records.length) appendFileSync(recordsPath, records.map((r) => JSON.stringify(r)).join('\n') + '\n')
-const { network, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs } = cfg
-writeFileSync(statusPath, JSON.stringify({ network, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads }, null, 2))
+// rpcUrl, f02 and addressPrefix are here for the page's live read of f02
+const { network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs } = cfg
+writeFileSync(statusPath, JSON.stringify({ network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads }, null, 2))
 console.log(`epochs ${from}..${to} (chain head ${chainHead}): ${records.length} new records -> ${recordsPath}`)

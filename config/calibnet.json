@@ -4,14 +4,12 @@
   "addressPrefix": "t",
   "genesisTimestamp": 1667326380,
   "epochSeconds": 30,
-
-  "activationEpoch": 0,
+  "activationEpoch": 4094734,
   "epochsPerQuarter": 2880,
   "swaTimelockEpochs": 720,
-
   "f02": "t02",
-  "sra": "0x0000000000000000000000000000000000000000",
-  "swa": "0x0000000000000000000000000000000000000000",
+  "sra": "0xeDfCd0947F7E9d58E0035f032520d75ce8eCA451",
+  "swa": "0xDE4fBd083F18f96C241DdE0A83C3EDC422Be9BA6",
   "owners": {
     "sraOwner1": "0xFb1B58925947E52B3f75BAc3D9fB5325cfb36371",
     "sraOwner2": "0x6c724FF811f51945d95872CF99FBd3fF63f7cFa2",
@@ -22,7 +20,7 @@
     "f099 (burn)": "0xff00000000000000000000000000000000000063",
     "initialOrchestrator": "0x97A90f5696be5E3C8d3752C92Adac287c2b4484e"
   },
-
   "dataDir": "site/data/calibnet",
-  "startEpoch": null
+  "startEpoch": 4078415,
+  "source": "solstice deployments.json at 0fa8cca (chain 314159). startEpoch is three epochs before the SRA deployment block 0x3e3b52 (4078418); the SWA followed at 0x3e3b56 (4078422). Both found with eth_getLogs on 2026-09-18."
 }

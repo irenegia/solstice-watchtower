@@ -11,6 +11,7 @@
   main { max-width:1100px; margin:0 auto; }
   h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:17px; margin:32px 0 8px; }
   a { color:var(--accent); } .muted { color:var(--muted); } .bad { color:var(--bad); font-weight:600; } .ok { color:var(--ok); }
+.banner.stopped { background:var(--bad); color:var(--bg); }
   .banner { background:var(--warn-bg); padding:8px 12px; border-radius:6px; margin:12px 0; font-weight:600; }
   .scroll { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:6px; }
   table { border-collapse:collapse; width:100%; font-size:14px; }
@@ -31,6 +32,8 @@
 
   <h2>1. Queued writes</h2>
   <div class="muted">Writes waiting in the f02 pending-write queue. Time left runs in your browser.</div>
+  <div id="live"></div>
+  <div class="muted">Recorded by the reader:</div>
   <div id="queue"></div>
 
   <h2>2. What landed</h2>
@@ -45,8 +48,16 @@
   <div id="state"></div>
 </main>
 
-<script>
-// The page only displays the record written by bin/reader.js. It decodes nothing itself.
+<script type="importmap">{ "imports": { "@ipld/dag-cbor": "https://cdn.jsdelivr.net/npm/@ipld/dag-cbor@9.2.0/+esm" } }</script>
+<script type="module">
+// The page displays the record written by bin/reader.js, and reads f02 live from the chain for parts 1 and 3.
+// The f02 decoder is the same file the reader uses.
+import { decodeStreamsState, computeWeight as weightNow, fromBase64 } from './lib/f02.js'
+
+// The repo the scheduled job commits the record to. The page asks it first, so the record is fresh even when
+// this page was published long ago; the copy bundled next to the page is the fallback.
+const REPO_RAW = 'https://raw.githubusercontent.com/irenegia/solstice-watchtower/main/site/'
+const STALE_MINUTES = 30
 // The three views, each with the note shown on top. calibnet is the real watchtower record and needs no note.
 const NOTES = {
   calibnet: '',
@@ -78,13 +89,6 @@ function show(key, v) {
 }
 const summary = (fields) => Object.entries(fields ?? {}).map(([k, v]) => `${esc(k)}: ${esc(show(k, v))}`).join(' · ')
 
-// FIP-0118 §2.4.1 ComputeWeight: clamp(v_start + slope * (e - t_start), floor, cap). Same formula as lib/f02.js.
-function weightNow(w, epoch) {
-  const x = BigInt(w.vStart) + BigInt(w.slope) * BigInt(epoch - w.tStart)
-  const lo = BigInt(w.floor), hi = BigInt(w.cap)
-  return x < lo ? lo : x > hi ? hi : x
-}
-
 function timeLeft(epochs, epochSeconds) {
   if (epochs <= 0) return '<span class="muted">effective epoch passed</span>'
   const min = Math.round(epochs * epochSeconds / 60)
@@ -94,8 +98,13 @@ function timeLeft(epochs, epochSeconds) {
 const slot = (w) => `${w.op}|${w.streamId ?? ''}|${w.effectiveEpoch}`
 
 async function main() {
-  const [status, text] = await Promise.all([fetch(dir + 'status.json').then((r) => r.json()), fetch(dir + 'records.jsonl').then((r) => r.text())])
+  // Record: the repo first (not when developing on localhost, and only for the real record), else the bundled copy.
+  const load = (base) => Promise.all([fetch(base + dir + 'status.json').then((r) => r.ok ? r.json() : Promise.reject(r.status)), fetch(base + dir + 'records.jsonl').then((r) => r.ok ? r.text() : Promise.reject(r.status))])
+  const useRepo = dataset === 'calibnet' && !['localhost', '127.0.0.1'].includes(location.hostname)
+  let from = 'the copy published with this page'
+  const [status, text] = await (useRepo ? load(REPO_RAW).then((x) => (from = 'the repo', x)).catch(() => load('')) : load(''))
   const records = text.split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.epoch - b.epoch)
+  records0 = records
   const nowEpoch = () => Math.floor((Date.now() / 1000 - status.genesisTimestamp) / status.epochSeconds)
   const quarterStart = (q) => status.activationEpoch + (q - 1) * status.epochsPerQuarter
   const epochTime = (e) => new Date((status.genesisTimestamp + e * status.epochSeconds) * 1000).toISOString()
@@ -105,6 +114,11 @@ async function main() {
     (quarterNow ? `quarter ${quarterNow} now` : 'before activation') +
     ` · <a href="${dir}records.jsonl">record file</a> · data: <a href="?">calibnet</a> | <a href="?data=sample">sample</a> | <a href="?data=real-test">real test</a>`
   if (NOTES[dataset]) $('banner').innerHTML = `<div class="banner">${esc(NOTES[dataset])}</div>`
+  $('head').innerHTML += ` · record from ${from}`
+  // Rule: a reader that stopped must be visible. The live read below does not depend on the reader.
+  const ageMin = Math.round((Date.now() - new Date(status.lastRun)) / 60000)
+  if (dataset === 'calibnet' && ageMin > STALE_MINUTES) $('banner').innerHTML += `<div class="banner stopped">The reader has not run since ${utc(status.lastRun)} (${ageMin} minutes ago). The history below may be incomplete.</div>`
+  liveRead(status, nowEpoch, epochTime).catch((err) => { $('live').innerHTML = `<div class="banner stopped">Live read of f02 failed: ${esc(err.message)}. Parts 1 and 3 show recorded values only.</div>` })
 
   // 1. queued writes: from the f02 state when the reader has it, and rebuilt from events as a cross-check
   const fromEvents = new Map()
@@ -138,7 +152,7 @@ async function main() {
   // 2. what landed: events, messages and claim checks, one table per quarter, newest quarter first
   function renderLanded() {
     const source = $('fSource').value, onlyBad = $('fBad').checked
-    const rows = records.filter((r) => (r.kind !== 'read' || r.name === 'claim check') && (!source || r.source === source) && (!onlyBad || r.ok === false))
+    const rows = records.filter((r) => (r.kind !== 'read' || r.name === 'claim check') && (!source || r.source === source || r.kind === 'gap') && (!onlyBad || r.ok === false))
     const quarters = [...new Set(rows.map((r) => r.quarter))].sort((a, b) => b - a)
     $('landed').innerHTML = rows.length === 0 ? '<p>Nothing yet.</p>' : quarters.map((q, i) => {
       const label = q === 0 ? 'Before activation' :
@@ -148,7 +162,7 @@ async function main() {
         <td class="nowrap">${esc(r.source)}<br><span class="muted">${r.kind}</span></td>
         <td><details class="row"><summary><b>${esc(r.name)}</b> ${summary(r.fields)}</summary><pre>${esc(JSON.stringify(r, null, 2))}</pre></details>
           ${r.from ? `<span class="muted">from ${esc(r.from)}${r.via ? ` via ${esc(r.via)}` : ''}</span>` : ''}</td>
-        <td class="result">${r.kind === 'message' ? (r.ok ? '<span class="ok">ok</span>' : `<span class="bad">reverted</span><br>${esc(r.error ?? '')}`) : r.name === 'claim check' ? (r.fields.matches ? '<span class="ok">matches</span>' : '<span class="bad">does not match</span>') : ''}</td>
+        <td class="result">${r.kind === 'message' ? (r.ok ? '<span class="ok">ok</span>' : `<span class="bad">reverted</span><br>${esc(r.error ?? '')}`) : r.name === 'claim check' ? (r.fields.matches ? '<span class="ok">matches</span>' : '<span class="bad">does not match</span>') : r.kind === 'gap' ? '<span class="bad">not read</span>' : ''}</td>
         <td class="nowrap">${r.tx ? `<a href="${msgLink(r.tx)}">message</a>` : r.msgCid ? `<a href="${msgLink(r.msgCid)}">message</a>` : ''}</td></tr>`).join('')
       return `<details class="quarter" ${i === 0 ? 'open' : ''}><summary>${label} <span class="muted">(${rows.filter((r) => r.quarter === q).length})</span></summary>
         <div class="scroll"><table><tr><th>time</th><th>source</th><th>what</th><th>result</th><th>link</th></tr>${body}</table></div></details>`
@@ -169,6 +183,34 @@ async function main() {
       <td class="nowrap">${utc(r.time)}<br><span class="muted">epoch ${r.epoch}</span></td></tr>`
   }).join('') + '</table></div>'
 }
+
+// Live read: the f02 state as of now, asked from the chain by this browser. Shown above the recorded values.
+async function liveRead(status, nowEpoch, epochTime) {
+  if (dataset !== 'calibnet' || !status.rpcUrl) return
+  const rpc = async (method, params) => {
+    const body = await (await fetch(status.rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })).json()
+    if (body.error) throw new Error(`${method}: ${body.error.message}`)
+    return body.result
+  }
+  const { State } = await rpc('Filecoin.StateReadState', [status.f02, null])
+  const root = Object.values(State).find((v) => v && typeof v === 'object' && '/' in v)?.['/']
+  const at = `live from the chain, f02 epoch ${State.Epoch} (${utc(epochTime(State.Epoch))})`
+  if (!root) {
+    $('live').innerHTML = `<p><b>Live:</b> ${at}. f02 on this network has no stream state yet: it still runs the code from before the upgrade, so there is no queue to read.</p>`
+    return
+  }
+  const live = decodeStreamsState(fromBase64(await rpc('Filecoin.ChainReadObj', [{ '/': root }])), status.addressPrefix)
+  const recorded = records0.filter((r) => r.name === 'f02 streams' && !r.fields.error).at(-1)
+  const differs = recorded && JSON.stringify(recorded.fields.pendingWrites.map(slot).sort()) !== JSON.stringify(live.pendingWrites.map(slot).sort())
+  $('live').innerHTML = `<p><b>Live:</b> ${at}. ${live.pendingWrites.length} queued write(s).` +
+    (differs ? ` <span class="bad">This differs from the recorded queue of ${utc(recorded.time)}.</span> The recorded one is older; if the difference stays after the next reader run, check both.` : '') + '</p>' +
+    (live.pendingWrites.length ? `<div class="scroll"><table><tr><th>op</th><th>stream-id</th><th>effective epoch</th><th>time left</th><th>payload</th></tr>` +
+      live.pendingWrites.map((w) => `<tr><td>${esc(w.op)}${w.cancellable ? '' : '<br><span class="muted">cannot be cancelled</span>'}</td><td>${w.streamId ?? '<span class="muted">schedule-wide</span>'}</td>
+        <td class="nowrap">${w.effectiveEpoch}<br><span class="muted">${utc(epochTime(w.effectiveEpoch))}</span></td><td class="nowrap" data-effective="${w.effectiveEpoch}">${timeLeft(w.effectiveEpoch - nowEpoch(), status.epochSeconds)}</td>
+        <td><details class="row"><summary>${summary(w.payload)}</summary><pre>${esc(JSON.stringify(w.payload, null, 2))}</pre></details></td></tr>`).join('') + '</table></div>' : '') +
+    `<p class="muted">Weights now: ${live.streams.map((st) => `stream ${st.id} ${scaled(weightNow(st.weight, nowEpoch()), 10n ** 16n, 2)}%`).join(' · ')}</p>`
+}
+let records0 = []
 
 // ponytail: one explorer, hard-coded. Filfox accepts both 0x transaction hashes and message CIDs.
 const msgLink = (id) => `https://calibration.filfox.info/en/message/${id}`

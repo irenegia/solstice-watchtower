@@ -1,12 +1,15 @@
 // Decoders for the reward actor (f02): its actor events and the state behind streams_root.
 // Layouts follow FIP-0118 §2.4.2 (state, encoding) and §2.4.9 (actor events), PR #1286 head a1a0a8b,
 // checked against builtin-actors master eb9c308 actors/reward/src/emit.rs.
+// This file runs in Node (the reader) and in the browser (the page's live read), so it uses no Node-only API.
+// In the page, the import below is resolved by the import map in index.html.
 import * as dagCbor from '@ipld/dag-cbor'
 
 // §2.4.2 PendingWriteOp, "encoded as the displayed integer".
 export const OPS = ['SetWeightRecords', 'StepWeightRecords', 'RegisterStream', 'RemoveStream', 'SetDistribution']
 
-const hex = (bytes) => Buffer.from(bytes).toString('hex')
+const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+export const fromBase64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
 const str = (n) => BigInt(n).toString()
 
 // Big integers (TokenAmount): one sign byte (00 +, 01 -), then big-endian magnitude, empty for zero.
@@ -66,7 +69,7 @@ export function decodePayload(op, payloadBytes, prefix = 'f') {
 // Returns { name, fields }. Field names are the event keys of §2.4.9.
 export function decodeActorEvent(event, prefix = 'f') {
   const kv = {}
-  for (const e of event.entries) kv[e.Key] = dagCbor.decode(Buffer.from(e.Value, 'base64'))
+  for (const e of event.entries) kv[e.Key] = dagCbor.decode(fromBase64(e.Value))
   const name = kv.$type
   const fields = {}
   if ('op' in kv) {

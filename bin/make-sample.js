@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, encodeErrorResult } from 'viem'
 import { epochToTime, quarterOf } from '../lib/chain.js'
-import { decodeActorEvent, decodeStreamsState } from '../lib/f02.js'
+import { decodeActorEvent, decodeStreamsState } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert } from '../lib/evm.js'
 import { PCT, entry, idAddress, tokenBytes, flat, sampleLog } from '../tests/samples.js'
 
