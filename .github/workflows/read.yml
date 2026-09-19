@@ -18,7 +18,7 @@ concurrency:
 jobs:
   read:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 20 # two networks; butterfly took about 5 minutes per 720 epochs on 2026-09-18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,10 +27,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node bin/reader.js config/calibnet.json
+      # Butterflynet gamma, the nv29 test network (lotus-infra issue #1654). A failure here must not stop the
+      # calibnet record from being committed, so this step may fail without failing the job.
+      - run: node bin/reader.js config/butterfly-gamma.json
+        continue-on-error: true
       - name: Commit the record if it changed
         run: |
           git config user.name "watchtower reader"
           git config user.email "actions@users.noreply.github.com"
-          git add site/data/calibnet
+          git add site/data/calibnet site/data/butterfly-gamma
           git diff --cached --quiet || git commit -m "record: $(jq -r .lastEpoch site/data/calibnet/status.json)"
           git push

@@ -58,6 +58,9 @@ import { decodeStreamsState, computeWeight as weightNow, fromBase64 } from './li
 // this page was published long ago; the copy bundled next to the page is the fallback.
 const REPO_RAW = 'https://raw.githubusercontent.com/irenegia/solstice-watchtower/main/site/'
 const STALE_MINUTES = 30
+// Views of a network the scheduled job still watches: they get the repo fetch, the "reader stopped" warning and the
+// live read of f02. The other views are fixed records.
+const LIVE = ['calibnet', 'butterfly-gamma']
 // The three views, each with the note shown on top. calibnet is the real watchtower record and needs no note.
 const NOTES = {
   calibnet: '',
@@ -66,6 +69,10 @@ const NOTES = {
     '(0x85e366cf9dd2c0ae37e963d9556f5f4718d6417c, epoch 4077698) to test that it reads real messages, finds the reverted ones and gets their reason. ' +
     'Names show as unknown(0x…) because the decoder only knows the SRA and SWA signatures. The source column says "SRA" only because ' +
     'the test put this contract in the SRA slot of the config. The message links open real transactions.',
+  'butterfly-gamma': 'A live test network, not calibnet. Butterflynet "gamma" started 2026-09-19 09:00 UTC; FIP-0118 activates on it at epoch 5220 ' +
+    '(Mon 2026-09-21 04:30 UTC), with 2-hour quarters and a 20-minute SWA_TIMELOCK. rvagg runs the nv29 test plan on it. Quarter numbers here follow the FIP: ' +
+    'quarter 1 starts at the activation epoch. The contracts and rvagg\'s plan count the same quarters from 0, so his "Q0" is quarter 1 here. ' +
+    'The message links do not work: butterflynet has no block explorer.',
   'butterfly-alpha': 'REAL Solstice data from a test network that no longer exists. Butterflynet "alpha" ran from 2026-09-17 20:04 UTC until its ' +
     'reset on 2026-09-18, with FIP-0118 active from epoch 90, 2-hour quarters and a 20-minute SWA_TIMELOCK. rvagg ran a test script on it: almost every ' +
     'SRA, SWA and f02 action. Read once on 2026-09-18, before the reset. This node had the actor events API off, so the record has NO f02 events ' +
@@ -105,7 +112,7 @@ const slot = (w) => `${w.op}|${w.streamId ?? ''}|${w.effectiveEpoch}`
 async function main() {
   // Record: the repo first (not when developing on localhost, and only for the real record), else the bundled copy.
   const load = (base) => Promise.all([fetch(base + dir + 'status.json').then((r) => r.ok ? r.json() : Promise.reject(r.status)), fetch(base + dir + 'records.jsonl').then((r) => r.ok ? r.text() : Promise.reject(r.status))])
-  const useRepo = dataset === 'calibnet' && !['localhost', '127.0.0.1'].includes(location.hostname)
+  const useRepo = LIVE.includes(dataset) && !['localhost', '127.0.0.1'].includes(location.hostname)
   let from = 'the copy published with this page'
   const [status, text] = await (useRepo ? load(REPO_RAW).then((x) => (from = 'the repo', x)).catch(() => load('')) : load(''))
   const records = text.split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.epoch - b.epoch)
@@ -117,12 +124,12 @@ async function main() {
 
   $('head').innerHTML = `${esc(status.network)} · last epoch read ${status.lastEpoch} (${utc(epochTime(status.lastEpoch))}) · ` +
     (quarterNow ? `quarter ${quarterNow} now` : 'before activation') +
-    ` · <a href="${dir}records.jsonl">record file</a> · data: <a href="?">calibnet</a> | <a href="?data=sample">sample</a> | <a href="?data=real-test">real test</a> | <a href="?data=butterfly-alpha">butterfly alpha</a>`
+    ` · <a href="${dir}records.jsonl">record file</a> · data: <a href="?">calibnet</a> | <a href="?data=sample">sample</a> | <a href="?data=real-test">real test</a> | <a href="?data=butterfly-gamma">butterfly gamma</a> | <a href="?data=butterfly-alpha">butterfly alpha</a>`
   if (NOTES[dataset]) $('banner').innerHTML = `<div class="banner">${esc(NOTES[dataset])}</div>`
   $('head').innerHTML += ` · record from ${from}`
   // Rule: a reader that stopped must be visible. The live read below does not depend on the reader.
   const ageMin = Math.round((Date.now() - new Date(status.lastRun)) / 60000)
-  if (dataset === 'calibnet' && ageMin > STALE_MINUTES) $('banner').innerHTML += `<div class="banner stopped">The reader has not run since ${utc(status.lastRun)} (${ageMin} minutes ago). The history below may be incomplete.</div>`
+  if (LIVE.includes(dataset) && ageMin > STALE_MINUTES) $('banner').innerHTML += `<div class="banner stopped">The reader has not run since ${utc(status.lastRun)} (${ageMin} minutes ago). The history below may be incomplete.</div>`
   liveRead(status, nowEpoch, epochTime).catch((err) => { $('live').innerHTML = `<div class="banner stopped">Live read of f02 failed: ${esc(err.message)}. Parts 1 and 3 show recorded values only.</div>` })
 
   // 1. queued writes: from the f02 state when the reader has it, and rebuilt from events as a cross-check
@@ -161,7 +168,7 @@ async function main() {
     const quarters = [...new Set(rows.map((r) => r.quarter))].sort((a, b) => b - a)
     $('landed').innerHTML = rows.length === 0 ? '<p>Nothing yet.</p>' : quarters.map((q, i) => {
       const label = q === 0 ? 'Before activation' :
-        `Quarter ${q} · ${utc(epochTime(quarterStart(q)))} to ${utc(epochTime(quarterStart(q + 1)))} · rehearsal plan: ${q === 1 ? 'Activation day' : `Q${q - 1} cycle`}`
+        `Quarter ${q} · ${utc(epochTime(quarterStart(q)))} to ${utc(epochTime(quarterStart(q + 1)))}` + (dataset === 'calibnet' ? ` · rehearsal plan: ${q === 1 ? 'Activation day' : `Q${q - 1} cycle`}` : '')
       const body = rows.filter((r) => r.quarter === q).map((r) => `<tr>
         <td class="nowrap">${utc(r.time)}<br><span class="muted">epoch ${r.epoch}</span></td>
         <td class="nowrap">${esc(r.source)}<br><span class="muted">${r.kind}</span></td>
@@ -191,7 +198,7 @@ async function main() {
 
 // Live read: the f02 state as of now, asked from the chain by this browser. Shown above the recorded values.
 async function liveRead(status, nowEpoch, epochTime) {
-  if (dataset !== 'calibnet' || !status.rpcUrl) return
+  if (!LIVE.includes(dataset) || !status.rpcUrl) return
   const rpc = async (method, params) => {
     const body = await (await fetch(status.rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) })).json()
     if (body.error) throw new Error(`${method}: ${body.error.message}`)
