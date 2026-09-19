@@ -109,3 +109,24 @@ export function decodeStreamsState(bytes, prefix = 'f') {
     })),
   }
 }
+
+// One pending-write slot: the queue holds at most one write per (op, stream id).
+export const slotOf = (w) => `${w.op}|${w.streamId ?? ''}`
+
+// What happened to a queued write, judged from the f02 state (decoded by decodeStreamsState) read AFTER its
+// effective epoch. f02 writes no visible event when a due write takes effect or is dropped inside a block reward
+// (FIP-0118 §2.4.9), so the state is the only evidence:
+//   still in the queue                      -> 'still queued'
+//   gone, and the state shows the payload   -> 'applied'
+//   gone, and the state does not show it    -> 'dropped or replaced'  (a later write may have overwritten it)
+export function writeOutcome(write, state) {
+  if (state.pendingWrites.some((p) => slotOf(p) === slotOf(write) && p.effectiveEpoch === write.effectiveEpoch)) return 'still queued'
+  const stream = (id) => state.streams.find((s) => s.id === id)
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  let shown
+  if (write.op === 'SetWeightRecords' || write.op === 'StepWeightRecords') shown = write.payload.updates.every((u) => same(stream(u.id)?.weight, u.record))
+  else if (write.op === 'RegisterStream') shown = same(stream(write.streamId)?.weight, write.payload.record)
+  else if (write.op === 'RemoveStream') shown = !stream(write.streamId)
+  else if (write.op === 'SetDistribution') shown = stream(write.streamId)?.distribution?.writer === write.payload.writer
+  return shown ? 'applied' : 'dropped or replaced'
+}

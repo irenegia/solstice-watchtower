@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, encodeErrorResult } from 'viem'
 import { quarterOf, epochToTime } from '../lib/chain.js'
-import { decodeActorEvent, decodeStreamsState, computeWeight, bigFromBytes, idToEthAddress } from '../site/lib/f02.js'
+import { decodeActorEvent, decodeStreamsState, computeWeight, bigFromBytes, idToEthAddress, writeOutcome } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert } from '../lib/evm.js'
 import { PCT, entry, idAddress, tokenBytes, flat, sampleLog } from './samples.js'
 
@@ -109,4 +109,15 @@ test('revert reasons', () => {
   assert.equal(decodeRevert(encodeErrorResult({ abi, errorName: 'StepsComplete' })), 'StepsComplete()')
   assert.equal(decodeRevert('0xdeadbeef'), 'unknown error 0xdeadbeef')
   assert.equal(decodeRevert(undefined), 'reverted (no reason given)')
+})
+
+test('outcome of a queued write, judged from the f02 state after its effective epoch', () => {
+  const state = (weight2, queue) => decodeStreamsState(dagCbor.encode([[[1, flat(85n, 4000000), null], [2, flat(weight2, 4000000), [idAddress(5000), [], [], []]]], [], queue]), 't')
+  const step = decodeStreamsState(dagCbor.encode([[], [], [[null, 1, stepTo15, 4100720]]]), 't').pendingWrites[0] // the queued gate step to 15%
+  assert.equal(writeOutcome(step, state(10n, [[null, 1, stepTo15, 4100720]])), 'still queued')
+  assert.equal(writeOutcome(step, decodeStreamsState(dagCbor.encode([[[2, flat(15n, 4100000), null]], [], []]), 't')), 'applied')
+  assert.equal(writeOutcome(step, state(10n, [])), 'dropped or replaced') // gone from the queue, weight unchanged
+  const remove = { op: 'RemoveStream', streamId: 2, effectiveEpoch: 4100720, payload: {} }
+  assert.equal(writeOutcome(remove, state(10n, [])), 'dropped or replaced') // stream 2 is still there
+  assert.equal(writeOutcome(remove, decodeStreamsState(dagCbor.encode([[[1, flat(85n, 4000000), null]], [], []]), 't')), 'applied')
 })

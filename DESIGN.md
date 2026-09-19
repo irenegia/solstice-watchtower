@@ -29,7 +29,12 @@ One run:
      message is replayed. Messages sent to f02 itself are read too, from the activation epoch on.
 3. At the chain head it does the reads: f02 state, the state behind `streams_root`, wallet balances, SRA views.
    For every `claim-payout` event it also reads the recipient's balance just before and just after.
-4. Appends the new records to `records.jsonl` and moves the cursor.
+4. For every queued write it has seen (from a `write-queued` event or from the queue in the f02 state), once the
+   effective epoch E has passed it reads the f02 state at tipset E+1 (and E+2) and records a `queued write outcome`:
+   `applied`, `dropped or replaced`, or `still queued`. f02 writes no visible event at that moment, so this read is
+   the only evidence (added 2026-09-19, after rvagg's rule: poll the state at every effective epoch). Tested on
+   hand-written samples only; the first real test is butterfly gamma on 2026-09-21.
+5. Appends the new records to `records.jsonl` and moves the cursor.
 
 Rules for the record:
 

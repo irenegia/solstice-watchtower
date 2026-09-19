@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, decodeFunctionResult } from 'viem'
 import { makeRpc, toHex, epochToTime, quarterOf } from '../lib/chain.js'
-import { decodeActorEvent, decodeStreamsState, idToEthAddress } from '../site/lib/f02.js'
+import { decodeActorEvent, decodeStreamsState, idToEthAddress, slotOf, writeOutcome } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert, plain } from '../lib/evm.js'
 
 // ponytail: no reorg handling. The reader stays LAG epochs behind the head; a deeper reorg can leave an
@@ -27,6 +27,8 @@ mkdirSync(cfg.dataDir, { recursive: true })
 const statusPath = join(cfg.dataDir, 'status.json')
 const recordsPath = join(cfg.dataDir, 'records.jsonl')
 const status = existsSync(statusPath) ? JSON.parse(readFileSync(statusPath, 'utf8')) : { lastEpoch: null, reads: {} }
+// Queued writes the reader has seen and whose outcome it has not recorded yet, kept between runs in status.json.
+status.pending ??= {}
 
 // address -> name, lower case. A contract still at the zero address is not deployed yet and is skipped.
 const contracts = new Map([['SRA', cfg.sra], ['SWA', cfg.swa]].filter(([, a]) => a !== ZERO).map(([n, a]) => [a.toLowerCase(), n]))
@@ -62,6 +64,8 @@ for (const ev of f02Events) {
   }
   rec('event', ev.height, 'f02', decoded.name, decoded.fields, extra)
   if (decoded.name === 'claim-payout') await claimCheck(ev.height, decoded.fields)
+  if (decoded.name === 'write-queued') watchWrite(decoded.fields)
+  if (decoded.name === 'write-cancelled') delete status.pending[pendingKey(decoded.fields)]
 }
 
 // A Claim is checked twice: the event gives recipient and amount, the wallet balance must move by the same amount.
@@ -168,6 +172,18 @@ async function replayReason(sender, target, data, value, epoch) {
   }
 }
 
+function pendingKey(w) { return `${slotOf(w)}|${w.effectiveEpoch}` }
+function watchWrite(w) { status.pending[pendingKey(w)] ??= { op: w.op, streamId: w.streamId, effectiveEpoch: w.effectiveEpoch, payload: w.payload } }
+
+// The f02 stream state as it was at a past epoch.
+async function streamsAt(epoch) {
+  const tipset = await rpc('Filecoin.ChainGetTipSetByHeight', [epoch, null])
+  const { State } = await rpc('Filecoin.StateReadState', [cfg.f02, tipset.Cids])
+  const root = Object.values(State).find((v) => v && typeof v === 'object' && '/' in v)?.['/']
+  if (!root) throw new Error('f02 has no stream state at that epoch')
+  return decodeStreamsState(Buffer.from(await rpc('Filecoin.ChainReadObj', [{ '/': root }]), 'base64'), cfg.addressPrefix)
+}
+
 // 4. reads: values that leave no event. A read is recorded only when its value changed since the last run.
 async function read(source, name, fn) {
   let fields
@@ -200,8 +216,32 @@ await read('f02', 'f02 state', async () => {
   return Object.fromEntries(Object.entries(State).filter(([k]) => !NOISY.includes(k)))
 })
 if (streamsRoot) {
-  await read('f02', 'f02 streams', async () =>
-    decodeStreamsState(Buffer.from(await rpc('Filecoin.ChainReadObj', [{ '/': streamsRoot }]), 'base64'), cfg.addressPrefix))
+  await read('f02', 'f02 streams', async () => {
+    const state = decodeStreamsState(Buffer.from(await rpc('Filecoin.ChainReadObj', [{ '/': streamsRoot }]), 'base64'), cfg.addressPrefix)
+    state.pendingWrites.forEach(watchWrite) // the queue in the state is the second source of queued writes, next to the events
+    return state
+  })
+}
+
+// 5. outcome of every queued write, read at its effective epoch. f02 writes no visible event when a due write takes
+// effect or is dropped inside a block reward (FIP-0118 §2.4.9), so the state is the only evidence. A write with
+// effective epoch E is handled while tipset E executes, so its effect shows in the state of tipset E+1; E+2 is read
+// too when E+1 still shows it queued (an epoch without a block).
+for (const [key, write] of Object.entries(status.pending)) {
+  const E = write.effectiveEpoch
+  if (E + 2 > chainHead - LAG) continue // not due yet
+  let outcome, readAt
+  try {
+    for (readAt of [E + 1, E + 2]) {
+      outcome = writeOutcome(write, await streamsAt(readAt))
+      if (outcome !== 'still queued') break
+    }
+  } catch (err) {
+    outcome = `could not be read: ${err.message.slice(0, 120)}` // usually: the node no longer keeps that state
+  }
+  if (outcome === 'still queued' && chainHead - E < 20) continue // give it a few more epochs before saying so
+  rec('read', readAt, 'f02', 'queued write outcome', { op: write.op, streamId: write.streamId ?? null, effectiveEpoch: E, outcome, readAtEpoch: readAt, payload: write.payload })
+  delete status.pending[key]
 }
 for (const [label, address] of Object.entries(cfg.wallets)) {
   await read('balance', `balance of ${label}`, async () => ({ address, attoFil: BigInt(await rpc('eth_getBalance', [address, 'latest'])).toString() }))
@@ -220,5 +260,5 @@ records.sort((a, b) => a.epoch - b.epoch)
 if (records.length) appendFileSync(recordsPath, records.map((r) => JSON.stringify(r)).join('\n') + '\n')
 // rpcUrl, f02 and addressPrefix are here for the page's live read of f02
 const { network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs } = cfg
-writeFileSync(statusPath, JSON.stringify({ network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads }, null, 2))
+writeFileSync(statusPath, JSON.stringify({ network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads, pending: status.pending }, null, 2))
 console.log(`epochs ${from}..${to} (chain head ${chainHead}): ${records.length} new records -> ${recordsPath}`)
