@@ -19,7 +19,7 @@ const LAG = 5
 const MAX_EPOCHS_PER_RUN = 720
 const ZERO = '0x0000000000000000000000000000000000000000'
 // f02 state fields that change every epoch and are not part of FIP-0118: left out of the record.
-const NOISY = ['ThisEpochRewardSmoothed', 'CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime']
+const NOISY = ['Epoch', 'ThisEpochReward', 'TotalStoragePowerReward', 'ThisEpochRewardSmoothed','CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime']
 
 const cfg = JSON.parse(readFileSync(process.argv[2] ?? 'config/calibnet.json', 'utf8'))
 const rpc = makeRpc(cfg.rpcUrl)

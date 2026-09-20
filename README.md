@@ -4,10 +4,10 @@ Reads what landed on chain in f02, the SWA and the SRA (FIP-0118) and shows it o
 
 > **Disclaimer: this is a vibe-coded PoC.** All the code, and OBSERVABILITY.md, were written by an AI agent
 > (Claude Code). Irene directed the scope and the design, but no human has reviewed the code. Treat what the page
-> shows as unverified until someone checks it. What has been checked: 11 automated tests on hand-written samples,
+> shows as unverified until someone checks it. What has been checked: 12 automated tests on hand-written samples,
 > and two records compared by hand with a block explorer.
 
-- Live page, hosted on Filecoin (Filecoin Pin): https://inbrowser.link/ipfs/bafybeiaalkk7ullf4rrllipm3wuvry7ebv7yuzwmecmplz4iqap2th5edi/
+- Live page, hosted on Filecoin (Filecoin Pin): https://inbrowser.link/ipfs/bafybeihk4odsbmor5dbsjtt5uk4d3yl6z4hi3nadjqtzdpqrqlp25uylye/
   This link is fixed to one version of the page; the data stays fresh because the page fetches the record from this repo.
 - Scope and discussion: https://github.com/filecoin-project/solstice/issues/69
 - Design and its decisions: [DESIGN.md](DESIGN.md)

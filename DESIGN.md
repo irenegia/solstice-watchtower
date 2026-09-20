@@ -134,9 +134,16 @@ are in this code, not in the chain:
    endpoint keeps events was not measured; one `eth_getLogs` query may span at most 2,880 epochs there
    ("block range exceeds maximum of 2880", seen 2026-09-18).
 
+## Changes for the next publish of the page (asked by Irene 2026-09-20)
+
+1. Make it clear which network the visitor is looking at. Today the network is one word in the header line and
+   the view links look all the same.
+2. Remove the `sample` and `real-test` views once calibnet has real queued writes (after 2026-09-23).
+
 ## Later steps (not built)
 
-1. One manual publish of `site/` to Filecoin with the `publish` skill (mainnet only).
+1. Done 2026-09-18, again 2026-09-20 (adds the butterfly views): one manual publish of `site/` to Filecoin with
+   the `publish` skill (mainnet only). Each publish gives a new link; the current one is in the README.
 2. The scheduled job: GitHub Actions runs the reader every 10 minutes and commits the record to this repo
    (`.github/workflows/read.yml`; it holds no key and no secret, and starts running once it is on GitHub).
    Three rules for when it fails (decided 2026-09-18); a watchtower that stops silently is worse than none:
