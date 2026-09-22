@@ -5,7 +5,9 @@ event it writes, what that event leaves out, and where an observer finds the res
 not any particular tool: anyone with access to a Filecoin node can use these sources.
 
 Checked against solstice `main` at `0fa8cca` (2026-09-17) and the f02 event table in FIP-0118 §2.4.9
-(PR #1286 head `e2e6421`). Claude's reading, not reviewed by an implementer.
+(PR #1286 head `2867946`, 2026-09-22, which adds the three f02 events of builtin-actors v19.0.0: `period-folded`,
+`shares-set`, `address-replaced`; code `actors/reward/src/lib.rs` at `3662c66`). Claude's reading, not reviewed by
+an implementer. A network emits the three new events only once it runs builtin-actors v19.0.0 or later.
 
 ## Three sources
 
@@ -47,8 +49,8 @@ can read it at the first approval.
 | Action | The event, and who emits it | What the event leaves out | Where to find it |
 |---|---|---|---|
 | `AddOrchestrator` | SRA: `OrchestratorAdmitted` (identity and wallet). The initial Orchestrator got the same event when the SRA was deployed | Nothing | |
-| `RemoveOrchestrator` | SRA: `OrchestratorRemoved` | That its share-map row was removed and its share now burns (§2.4.4: "removes the row and burns its share"; f099 is never a stored recipient): f02 writes no event for that change. **And whether f02 made the change at all**: the SRA ignores f02's answer, so the event and the successful message appear even when f02 rejected the call | Read: the share map in the f02 state. The row is gone and the remaining shares sum to less than 1 |
-| `ReplaceWallet` | SRA: `OrchestratorWalletReplaced` | That the share map now pays the new wallet: no f02 event. **And whether f02 made the change at all**, as for `RemoveOrchestrator` | Read: the share map in the f02 state |
+| `RemoveOrchestrator` | SRA: `OrchestratorRemoved`. f02: `period-folded` (the period closed, with the amount distributed and the dust burned) and `address-replaced` with `new-recipient` 99 (the row moved to f099, which means it burns from now on, §2.4.4) | **Whether f02 made the change at all**: the SRA ignores f02's answer, so the SRA event and the successful message appear even when f02 rejected the call. The f02 events are emitted only when f02 accepted it, so their absence next to `OrchestratorRemoved` is the sign of a rejection | Read: the share map in the f02 state, when the network does not emit the f02 events yet |
+| `ReplaceWallet` | SRA: `OrchestratorWalletReplaced`. f02: `period-folded` and `address-replaced` with the old and the new recipient | **Whether f02 made the change at all**, as for `RemoveOrchestrator`: only the f02 events, or a read, show it | Read: the share map in the f02 state |
 | `ReassignBinding`, `ReassignBindings` | SRA: `BindingReassigned`, one per pair | Nothing | |
 | `SetAdmittedLists` | SRA: `AdmittedListsUpdated`, with both full lists | Nothing. But the SRA stores nothing, so **this event is the only record**: the lists cannot be read back from the SRA's state | The event history only. An observer needs a node or an index that still serves the event |
 | `SetPricingParams` | SRA: `PricingParamsUpdated`, with all five values | Same: the event is the only record | The event history only |
@@ -67,7 +69,7 @@ can read it at the first approval.
 
 | Action | The event, and who emits it | What the event leaves out | Where to find it |
 |---|---|---|---|
-| `SubmitShares` | SRA: `SharesSubmitted`, with the number of recipients and the USD total. **None at all when the quarter's total is 0** (nobody posted, or every value was corrected to 0): the call succeeds silently | The shares themselves. In the silent case, that the quarter now counts as submitted | Read: the share map in the f02 state. Message: the successful call, in the silent case |
+| `SubmitShares` | SRA: `SharesSubmitted`, with the number of recipients and the USD total. f02: `period-folded` (the closed period) and `shares-set` with the whole new share map (recipient, share) | **None at all when the quarter's total is 0** (nobody posted, or every value was corrected to 0): the call succeeds silently, the SRA does not call f02, and the quarter counts as submitted | Message: the successful call, in the silent case. Read: the share map in the f02 state, when the network does not emit `shares-set` yet |
 | `QuarterlyGateCheck` | SWA: `QuarterlyGateCheckResult` (quarter, passed or not, steps). On a pass also f02: `write-queued` for the step, which cannot be cancelled | Nothing | |
 | `Claim` | f02: `claim-payout`, with recipient and amount. None when the claim pays nothing | That the FIL reached the wallet. And a claim that paid nothing, or failed | Read: the wallet balance just before and just after. Message: the `Claim` call, which is sent to f02 directly, not to the SRA or the SWA |
 
@@ -75,7 +77,7 @@ can read it at the first approval.
 
 | What happens | The event | Where to find it |
 |---|---|---|
-| A queued write takes effect, or is dropped | `write-applied` / `write-dropped` exist but are not visible on chain when f02 runs them inside a block reward (§2.4.9, until FIP-0107) | Read: the f02 state, compared with the queue |
+| A queued write takes effect, or is dropped | `write-applied` / `write-dropped`, and `period-folded` for a `RemoveStream` or `SetDistribution` that closes a period: emitted only when the write is run inside an explicit f02 message (`SetShares`, `ReplaceAddress`, `Claim`, a new write) that lands at or after the effective epoch. Inside a block reward they are not visible on chain (§2.4.9, until FIP-0107) | Read: the f02 state, compared with the queue |
 | The weights in force; the burn | None | Read: the weight records, `total_burn_minted`, the f099 balance |
 | Rewards building up for the service stream | None | Read: `accrued`, `total_explicit_minted` |
 
@@ -104,8 +106,11 @@ These leave nothing on chain:
 2. `SetAdmittedLists`, `SetPricingParams`: the event is the only record. Nothing in the SRA's state holds
    the lists or the values, so they exist only in the event history.
 3. `SubmitShares` when the quarter's total is 0: no event.
-4. Share map changes in f02 (`SubmitShares`, `RemoveOrchestrator`, `ReplaceWallet`): no f02 event.
+4. Share map changes in f02 (`SubmitShares`, `RemoveOrchestrator`, `ReplaceWallet`): on a network before
+   builtin-actors v19.0.0, no f02 event; from v19.0.0 on, `shares-set` or `address-replaced` plus `period-folded`.
 5. `RemoveOrchestrator` and `ReplaceWallet`: the SRA event says "removed" or "replaced" even when f02 rejected its
    half. f02 rejects when the old wallet is not in the stored share map (normal for an Orchestrator that never
    got a share), when the new wallet is already in the map, or when an address does not resolve to an existing
-   actor (§2.4.4). Only a share map read shows whether f02 changed.
+   actor (§2.4.4). Only a share map read, or from v19.0.0 the presence of the f02 events, shows whether f02 changed.
+6. A period closed inside a block reward (a due `RemoveStream` or `SetDistribution`): no visible `period-folded`,
+   only the burn total and the f099 balance move.
