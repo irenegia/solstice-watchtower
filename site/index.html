@@ -22,11 +22,17 @@
   details.quarter { margin:10px 0; } details.quarter > summary { cursor:pointer; font-weight:600; padding:6px 0; }
   details.row > summary { cursor:pointer; list-style:none; } details.row > summary::-webkit-details-marker { display:none; }
   .filters { display:flex; gap:16px; flex-wrap:wrap; margin:8px 0; font-size:14px; }
+  /* The network bar: one colour per network, so a visitor sees at once which chain the page shows. */
+  body { border-top:10px solid var(--net); } :root { --net:#0b57d0; } body[data-net='butterfly'] { --net:#e0731c; }
+  .net { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--net); color:#fff; font-weight:700; }
+  .views { margin:6px 0 0; } .views a.here { font-weight:700; text-decoration:none; color:var(--fg); }
+  footer { margin-top:48px; padding-top:12px; border-top:1px solid var(--line); font-size:13px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Solstice watchtower</h1>
+  <h1>Solstice watchtower <span id="net" class="net"></span></h1>
+  <div id="views" class="views muted"></div>
   <div id="head" class="muted">loading…</div>
   <div id="banner"></div>
 
@@ -46,6 +52,7 @@
   <h2>3. State</h2>
   <div class="muted">Values that leave no event. Each line shows the last value read and when it last changed.</div>
   <div id="state"></div>
+  <footer id="foot" class="muted"></footer>
 </main>
 
 <script type="importmap">{ "imports": { "@ipld/dag-cbor": "https://cdn.jsdelivr.net/npm/@ipld/dag-cbor@9.2.0/+esm" } }</script>
@@ -61,14 +68,11 @@ const STALE_MINUTES = 30
 // Views of a network the scheduled job still watches: they get the repo fetch, the "reader stopped" warning and the
 // live read of f02. The other views are fixed records.
 const LIVE = ['calibnet', 'butterfly-gamma']
-// The three views, each with the note shown on top. calibnet is the real watchtower record and needs no note.
+// The views, each with the note shown on top. calibnet is the real watchtower record and needs no note.
+// The sample and real-test views were removed 2026-09-22 (their records stay in the repo history).
+const VIEWS = { calibnet: 'calibnet', 'butterfly-gamma': 'butterfly gamma', 'butterfly-alpha': 'butterfly alpha' }
 const NOTES = {
   calibnet: '',
-  sample: 'SAMPLE DATA. Written by hand to test the page. Nothing here happened on chain.',
-  'real-test': 'REAL chain data, but NOT Solstice. On 2026-09-17 the reader was run once on an unrelated calibnet contract ' +
-    '(0x85e366cf9dd2c0ae37e963d9556f5f4718d6417c, epoch 4077698) to test that it reads real messages, finds the reverted ones and gets their reason. ' +
-    'Names show as unknown(0x…) because the decoder only knows the SRA and SWA signatures. The source column says "SRA" only because ' +
-    'the test put this contract in the SRA slot of the config. The message links open real transactions.',
   'butterfly-gamma': 'A live test network, not calibnet. Butterflynet "gamma" started 2026-09-19 09:00 UTC; FIP-0118 activates on it at epoch 5220 ' +
     '(Mon 2026-09-21 04:30 UTC), with 2-hour quarters and a 20-minute SWA_TIMELOCK. rvagg runs the nv29 test plan on it. Quarter numbers here follow the FIP: ' +
     'quarter 1 starts at the activation epoch. The contracts and rvagg\'s plan count the same quarters from 0, so his "Q0" is quarter 1 here. ' +
@@ -122,9 +126,12 @@ async function main() {
   const epochTime = (e) => new Date((status.genesisTimestamp + e * status.epochSeconds) * 1000).toISOString()
   const quarterNow = status.activationEpoch && nowEpoch() >= status.activationEpoch ? Math.floor((nowEpoch() - status.activationEpoch) / status.epochsPerQuarter) + 1 : 0
 
-  $('head').innerHTML = `${esc(status.network)} · last epoch read ${status.lastEpoch} (${utc(epochTime(status.lastEpoch))}) · ` +
-    (quarterNow ? `quarter ${quarterNow} now` : 'before activation') +
-    ` · <a href="${dir}records.jsonl">record file</a> · data: <a href="?">calibnet</a> | <a href="?data=sample">sample</a> | <a href="?data=real-test">real test</a> | <a href="?data=butterfly-gamma">butterfly gamma</a> | <a href="?data=butterfly-alpha">butterfly alpha</a>`
+  $('net').textContent = status.network
+  document.body.dataset.net = status.network.startsWith('butterfly') ? 'butterfly' : 'calibnet'
+  $('views').innerHTML = 'You are looking at <b>' + esc(status.network) + '</b>. Other networks: ' +
+    Object.entries(VIEWS).map(([k, v]) => k === dataset ? `<a class="here">${v}</a>` : `<a href="${k === 'calibnet' ? '?' : `?data=${k}`}">${v}</a>`).join(' | ')
+  $('head').innerHTML = `last epoch read ${status.lastEpoch} (${utc(epochTime(status.lastEpoch))}) · ` +
+    (quarterNow ? `quarter ${quarterNow} now` : 'before activation') + ` · <a href="${dir}records.jsonl">record file</a>`
   if (NOTES[dataset]) $('banner').innerHTML = `<div class="banner">${esc(NOTES[dataset])}</div>`
   $('head').innerHTML += ` · record from ${from}`
   // Rule: a reader that stopped must be visible. The live read below does not depend on the reader.
@@ -161,7 +168,7 @@ async function main() {
   const tick = () => document.querySelectorAll('[data-effective]').forEach((td) => { td.innerHTML = timeLeft(td.dataset.effective - nowEpoch(), status.epochSeconds) })
   tick(); setInterval(tick, 30000)
 
-  // 2. what landed: events, messages and claim checks, one table per quarter, newest quarter first
+  // 2. what landed: events, messages and claim checks, one table per quarter, newest quarter first and newest row first
   function renderLanded() {
     const source = $('fSource').value, onlyBad = $('fBad').checked
     const rows = records.filter((r) => (r.kind !== 'read' || r.name === 'claim check') && (!source || r.source === source || r.kind === 'gap') && (!onlyBad || r.ok === false))
@@ -169,7 +176,7 @@ async function main() {
     $('landed').innerHTML = rows.length === 0 ? '<p>Nothing yet.</p>' : quarters.map((q, i) => {
       const label = q === 0 ? 'Before activation' :
         `Quarter ${q} · ${utc(epochTime(quarterStart(q)))} to ${utc(epochTime(quarterStart(q + 1)))}` + (dataset === 'calibnet' ? ` · rehearsal plan: ${q === 1 ? 'Activation day' : `Q${q - 1} cycle`}` : '')
-      const body = rows.filter((r) => r.quarter === q).map((r) => `<tr>
+      const body = rows.filter((r) => r.quarter === q).reverse().map((r) => `<tr>
         <td class="nowrap">${utc(r.time)}<br><span class="muted">epoch ${r.epoch}</span></td>
         <td class="nowrap">${esc(r.source)}<br><span class="muted">${r.kind}</span></td>
         <td><details class="row"><summary><b>${esc(r.name)}</b> ${summary(r.fields)}</summary><pre>${esc(JSON.stringify(r, null, 2))}</pre></details>
@@ -214,6 +221,7 @@ async function liveRead(status, nowEpoch, epochTime) {
   const live = decodeStreamsState(fromBase64(await rpc('Filecoin.ChainReadObj', [{ '/': root }])), status.addressPrefix)
   const recorded = records0.filter((r) => r.name === 'f02 streams' && !r.fields.error).at(-1)
   const differs = recorded && JSON.stringify(recorded.fields.pendingWrites.map(slot).sort()) !== JSON.stringify(live.pendingWrites.map(slot).sort())
+  footnote(live, status)
   $('live').innerHTML = `<p><b>Live:</b> ${at}. ${live.pendingWrites.length} queued write(s).` +
     (differs ? ` <span class="bad">This differs from the recorded queue of ${utc(recorded.time)}.</span> The recorded one is older; if the difference stays after the next reader run, check both.` : '') + '</p>' +
     (live.pendingWrites.length ? `<div class="scroll"><table><tr><th>op</th><th>stream-id</th><th>effective epoch</th><th>time left</th><th>payload</th></tr>` +
@@ -223,6 +231,19 @@ async function liveRead(status, nowEpoch, epochTime) {
     `<p class="muted">Weights now: ${live.streams.map((st) => `stream ${st.id} ${scaled(weightNow(st.weight, nowEpoch()), 10n ** 16n, 2)}%`).join(' · ')}</p>`
 }
 let records0 = []
+
+// Footnote: the SRA counts quarters from its activationEpoch (deployments.json); f02's ramp starts at stream 1's t_start,
+// set by the migration to the upgrade epoch + 1. FIP-0118 §2.4.10 expects them equal. A one-epoch difference changes
+// nothing on this page; more than that is worth a look.
+function footnote(live, status) {
+  const t = live.streams.find((s) => s.id === 1)?.weight.tStart
+  if (t === undefined || !status.activationEpoch) return
+  const d = Math.abs(t - status.activationEpoch)
+  const rel = d === 0 ? 'equal' : d === 1 ? 'one epoch apart, which changes nothing here' : `<span class="bad">${d} epochs apart, which is unexpected</span>`
+  $('foot').innerHTML = `Quarter numbers on this page follow the SRA: Start(Q) = activationEpoch + (Q-1) · EPOCHS_PER_QUARTER, with activationEpoch ${status.activationEpoch} ` +
+    `from solstice deployments.json. f02's own ramp starts at t_start of stream 1, set by the migration to the upgrade epoch + 1: here ${t}. ` +
+    `The two are ${rel}. FIP-0118 §2.4.10 expects them equal.`
+}
 
 // ponytail: one explorer, hard-coded. Filfox accepts both 0x transaction hashes and message CIDs.
 const msgLink = (id) => `https://calibration.filfox.info/en/message/${id}`
