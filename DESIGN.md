@@ -114,9 +114,24 @@ calls from a web page (`access-control-allow-origin: *`, checked 2026-09-18 on t
   recipient, 250,000 USD) against the share map (1 row) and against `VolumePosted`; `aggregatedFilecoinPayVolume(10)`
   read as 250,000 USD. Not proved there: f02 events (the actor events API was off on that node; it is on from
   the next reset), and nothing could be compared with a block explorer (butterflynet has none).
-- Still not testable on calibnet before its activation: the real f02 event bytes from the node, the state
-  behind `streams_root` on real data, the multisig message path. First job after deployment: check three
-  records by hand against a block explorer.
+- First full day on real data, 2026-09-21, butterflynet "gamma" (FIP-0118 active from epoch 5221, 2-hour
+  quarters, 40-epoch hold; rvagg's nv29 test run, plan in his handoff files, kept privately). The job was started
+  by hand every 15 to 25 minutes from 04:41 to 12:20 UTC, then left to its schedule. Everything recorded matched
+  the plan, epoch by epoch: `postVolume` and `correctVolume` (one second approval reverting
+  `NotInVerificationWindow(3)`, then a `veto`), `submitShares` (one reverting `SetSharesFailed(17)` after an
+  Orchestrator was admitted with a wallet f02 refuses, then the two-owner `replaceWallet` and `removeOrchestrator`
+  repair), a `Claim` with its `claim-payout` (the claim check matched the wallet balance change exactly), three
+  passed gate checks. Each gate step gave a `write-queued` event and the same entry in the f02 queue, showed on
+  the published page live with its time left, and got a `queued write outcome: applied` line read at E+1, with
+  the new weight in the state. Three share maps were checked by hand against the posted volumes. No gap record.
+  One lesson: the record ends `LAG` (5) epochs behind the chain head, so "not seen" must always come with "record
+  up to epoch N". Calibnet the same day: the first two governance actions (`setAdmittedLists`, `setPricingParams`),
+  each sent through both owner multisigs, decoded with `via: sraOwnerN` and the `Submitted` / `Approved` /
+  `...Updated` events.
+- Still not tested on real data: the `write-cancelled`, `write-dropped` and `write-applied` events; a
+  `dropped or replaced` outcome; the three f02 events added in builtin-actors v19.0.0 (`period-folded`,
+  `shares-set`, `address-replaced`; PR #1794, 2026-09-22), which the decoder does not know yet and records as
+  their `$type` with raw entries. Calibnet activation (2026-09-23) is the first chance for these.
 
 ## Known limits of the PoC
 
@@ -139,6 +154,27 @@ are in this code, not in the chain:
 1. Make it clear which network the visitor is looking at. Today the network is one word in the header line and
    the view links look all the same.
 2. Remove the `sample` and `real-test` views once calibnet has real queued writes (after 2026-09-23).
+3. Warn when stream 1's `t_start` in the f02 state differs from the configured `activationEpoch` (noted
+   2026-09-21, not built). The migration sets `t_start` to the Lotus upgrade epoch + 1 (go-state-types
+   `builtin/v19/migration/top.go` line 134 at `6c7f7c3`: `activationEpoch := priorEpoch + 1`), and the SRA
+   counts quarters from its own `activationEpoch` (`deployments.json`). FIP-0118 §2.4.10 expects the two to be
+   equal (`t_start` = `ACTIVATION_EPOCH`). On butterfly gamma they are (upgrade 5220, both 5221). On calibnet
+   they are equal only if the Lotus upgrade epoch is 4094733; with 4094734 the f02 ramp and the SRA quarters
+   are one epoch apart. Nothing breaks, but the page should say it.
+4. In part 2 ("What landed"), show the newest row first, not last (asked by Irene 2026-09-21): newest quarter
+   on top, and inside a quarter the newest event or message on top.
+
+## Changes in the reader after the 2026-09-21 test (no publish needed)
+
+1. Decode the three new f02 events of builtin-actors v19.0.0 (`period-folded`: `stream-id`, `cause`, `accrued`,
+   `dust`; `shares-set`: `stream-id`, `shares` rows; `address-replaced`: `stream-id`, `old-recipient`,
+   `new-recipient`; `emit.rs` at `3662c66`). Today they are recorded by `$type` with raw entries, nothing is lost.
+   `period-folded` matters most: it is the only way to see a fold and its dust per stream; today only the burn
+   total is visible. All three come from explicit messages only, so a fold inside the block reward stays invisible.
+2. Leave out the f02 state fields that change every epoch after activation (`TotalMintedReward`,
+   `TotalBurnMinted`, `TotalExplicitMinted`; keep `Accrued`), so a "f02 state" line means a real change.
+3. Decode the parameters of a `Claim` message (stream id, wallets) instead of showing raw bytes.
+4. Add the state reads rvagg suggests: `fpvOf(q, orch)`, `totalUsd[q]`, `bindingOf`.
 
 ## Later steps (not built)
 
@@ -173,3 +209,9 @@ are in this code, not in the chain:
    Later improvement, same decision: a Goldsky subgraph for the SRA and SWA events, as the PDP explorer has,
    to shorten the delay for them. It cannot cover f02 (not a contract) or failed messages (no event).
 4. The alert: needs a named person and a channel.
+5. A proper timer for the reader (decided 2026-09-21). GitHub starts the scheduled job only every 2 to 5 hours
+   (measured 2026-09-18 to 2026-09-21). Stopgap for the PoC: an outside timer (cron-job.org) starts the job every
+   15 minutes through the GitHub API, with a token limited to this repo and the Actions permission, held by
+   Irene. To fix after the PoC, one of: (a) a timer on a FilOz machine, set up by infra, so the token is in team
+   hands; (b) remove the need for a job for the contract events with an index like the PDP explorer's Goldsky
+   subgraph. (b) cannot cover f02 or failed messages, so the reader stays for those.
