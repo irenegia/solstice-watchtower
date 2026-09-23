@@ -49,9 +49,11 @@ quarter Q is `[Start(Q), Start(Q+1))`. Quarter 0 means before activation.
 
 ## Sources the decoders were written from
 
-- Contracts: solstice `main` at `87fd57c` (2026-09-16), re-checked at `0fa8cca` (2026-09-17, the deployed
-  version: the SRA is unchanged, the SWA gained two gate-check errors). Each signature group in `lib/evm.js`
-  names its file.
+- Contracts: solstice `main` at `87fd57c` (2026-09-16), re-checked at `0fa8cca` (2026-09-17, the first calibnet
+  deploy, now frozen) and at `0006edc` (2026-09-22, the calibnet v1 redeploy, solstice #83; adds `GateParamsSet`
+  and `WeightRecordsQueued` from PR #79, `InvalidActorId` from PR #78, and `replaceWallet` / `removeOrchestrator`
+  reverting on an f02 refusal from PR #80). Every error and event of the SRA, SWA and FVMRewards at `0006edc` is in
+  `lib/evm.js` (checked 2026-09-23). Each signature group names its file.
 - f02 events and state: FIP-0118 §2.4.2 and §2.4.9 at the PR #1286 head `a1a0a8b`, checked against
   builtin-actors `master` at `eb9c308`, `actors/reward/src/emit.rs` (PR #1782 merged 2026-09-16).
 

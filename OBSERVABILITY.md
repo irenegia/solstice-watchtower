@@ -4,7 +4,7 @@ For every action in FIP-0118 (by the SWA multisigs, the SRA multisigs, an Orches
 event it writes, what that event leaves out, and where an observer finds the rest. It describes the chain,
 not any particular tool: anyone with access to a Filecoin node can use these sources.
 
-Checked against solstice `main` at `0fa8cca` (2026-09-17) and the f02 event table in FIP-0118 §2.4.9
+Checked against solstice `0006edc` (2026-09-22, the calibnet v1 deploy; PRs #78, #79, #80 of that day are in it) and the f02 event table in FIP-0118 §2.4.9
 (PR #1286 head `2867946`, 2026-09-22, which adds the three f02 events of builtin-actors v19.0.0: `period-folded`,
 `shares-set`, `address-replaced`; code `actors/reward/src/lib.rs` at `3662c66`). Claude's reading, not reviewed by
 an implementer. A network emits the three new events only once it runs builtin-actors v19.0.0 or later.
@@ -40,7 +40,7 @@ can read it at the first approval.
 |---|---|---|---|
 | `RegisterStream`, `RemoveStream`, `SetWeightRecords`, `SetDistribution` | f02: `write-queued`, when the second multisig approves. It carries the whole write and its effective epoch. The write then waits `SWA_TIMELOCK` in f02 | Whether the write later took effect or was dropped: f02 writes no visible event at that moment | Read: the f02 state after the effective epoch |
 | `CancelPending`, `CancelPendingWeight` (one multisig is enough) | f02: `write-cancelled` | Nothing | |
-| `SetGateParams` | **None.** After both approvals it waits a hold inside the SWA; then anyone sends the same call a third time and it takes effect, with no event | Everything: that it took effect, when, and with which values | Message: the third call, with its values. Read: the SWA's raw storage also holds the values, but no function returns them, and a raw read breaks if an upgrade moves the storage layout |
+| `SetGateParams` | SWA: `GateParamsSet`, with the values, when it takes effect: after both approvals it waits a hold inside the SWA, then anyone sends the same call a third time (solstice PR #79, 2026-09-22; before it there was no event) | Nothing once it took effect. During the hold, only the approvals' `Submitted` / `Approved` exist, and they carry no values | Message: the proposal, with its values. Read: the SWA's raw storage also holds the values, but no function returns them, and a raw read breaks if an upgrade moves the storage layout |
 | `ReplaceOwner` | SWA: `OwnerRemoved`, `OwnerAdded`, `OwnerReplaced` | Nothing | |
 | Contract upgrade | SWA: `Upgraded`, with the address of the new code, when it takes effect after the hold (an OpenZeppelin event; not checked against the OpenZeppelin version solstice uses) | That an upgrade is waiting in its hold | Message: the two approvals during the hold |
 
@@ -48,9 +48,9 @@ can read it at the first approval.
 
 | Action | The event, and who emits it | What the event leaves out | Where to find it |
 |---|---|---|---|
-| `AddOrchestrator` | SRA: `OrchestratorAdmitted` (identity and wallet). The initial Orchestrator got the same event when the SRA was deployed | Nothing | |
-| `RemoveOrchestrator` | SRA: `OrchestratorRemoved`. f02: `period-folded` (the period closed, with the amount distributed and the dust burned) and `address-replaced` with `new-recipient` 99 (the row moved to f099, which means it burns from now on, §2.4.4) | **Whether f02 made the change at all**: the SRA ignores f02's answer, so the SRA event and the successful message appear even when f02 rejected the call. The f02 events are emitted only when f02 accepted it, so their absence next to `OrchestratorRemoved` is the sign of a rejection | Read: the share map in the f02 state, when the network does not emit the f02 events yet |
-| `ReplaceWallet` | SRA: `OrchestratorWalletReplaced`. f02: `period-folded` and `address-replaced` with the old and the new recipient | **Whether f02 made the change at all**, as for `RemoveOrchestrator`: only the f02 events, or a read, show it | Read: the share map in the f02 state |
+| `AddOrchestrator` | SRA: `OrchestratorAdmitted` (identity and wallet). The initial Orchestrator got the same event when the SRA was deployed. Since PR #78 (2026-09-22) the SRA rejects a wallet that is not an existing actor (`InvalidActorId`), so that failure is a reverted message | Nothing | |
+| `RemoveOrchestrator` | SRA: `OrchestratorRemoved`. f02: `period-folded` (the period closed, with the amount distributed and the dust burned) and `address-replaced` with `new-recipient` 99 (the row moved to f099, which means it burns from now on, §2.4.4) | Nothing on the v1 contracts: since PR #80 (2026-09-22) the SRA call reverts when f02 rejects the change (`ReplaceAddressFailed`), so the event exists only when f02 made it. On the older contracts (butterflynet, the frozen 17 September calibnet deploy) the SRA ignored f02's answer and emitted the event anyway | Read: the share map in the f02 state, as a cross-check |
+| `ReplaceWallet` | SRA: `OrchestratorWalletReplaced`. f02: `period-folded` and `address-replaced` with the old and the new recipient | Nothing on the v1 contracts, as for `RemoveOrchestrator` | Read: the share map in the f02 state, as a cross-check |
 | `ReassignBinding`, `ReassignBindings` | SRA: `BindingReassigned`, one per pair | Nothing | |
 | `SetAdmittedLists` | SRA: `AdmittedListsUpdated`, with both full lists | Nothing. But the SRA stores nothing, so **this event is the only record**: the lists cannot be read back from the SRA's state | The event history only. An observer needs a node or an index that still serves the event |
 | `SetPricingParams` | SRA: `PricingParamsUpdated`, with all five values | Same: the event is the only record | The event history only |
@@ -102,15 +102,16 @@ These leave nothing on chain:
 
 ## Where the event is weakest
 
-1. `SetGateParams` taking effect: no event at all.
+1. `SetGateParams` during its hold: the two approvals carry only a task code; the values are in the proposal message. (Taking effect has an event since PR #79.)
 2. `SetAdmittedLists`, `SetPricingParams`: the event is the only record. Nothing in the SRA's state holds
    the lists or the values, so they exist only in the event history.
 3. `SubmitShares` when the quarter's total is 0: no event.
 4. Share map changes in f02 (`SubmitShares`, `RemoveOrchestrator`, `ReplaceWallet`): on a network before
    builtin-actors v19.0.0, no f02 event; from v19.0.0 on, `shares-set` or `address-replaced` plus `period-folded`.
-5. `RemoveOrchestrator` and `ReplaceWallet`: the SRA event says "removed" or "replaced" even when f02 rejected its
-   half. f02 rejects when the old wallet is not in the stored share map (normal for an Orchestrator that never
-   got a share), when the new wallet is already in the map, or when an address does not resolve to an existing
-   actor (§2.4.4). Only a share map read, or from v19.0.0 the presence of the f02 events, shows whether f02 changed.
+5. `RemoveOrchestrator` and `ReplaceWallet` on contracts older than PR #80 (butterflynet, the frozen 17 September
+   calibnet deploy): the SRA event says "removed" or "replaced" even when f02 rejected its half. f02 rejects when
+   the old wallet is not in the stored share map, when the new wallet is already in the map, or when an address
+   does not resolve to an existing actor (§2.4.4). There, only a share map read, or from v19.0.0 the presence of
+   the f02 events, shows whether f02 changed. On the v1 contracts the call reverts instead.
 6. A period closed inside a block reward (a due `RemoveStream` or `SetDistribution`): no visible `period-folded`,
    only the burn total and the f099 balance move.
