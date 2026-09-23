@@ -142,7 +142,9 @@ calls from a web page (`access-control-allow-origin: *`, checked 2026-09-18 on t
   `applied`), `submitShares(11)` reverting `SetSharesFailed(18)` then the writer's f02 `SetShares`, and six gate
   steps each queued and `applied`. Also in the record, not in his table: the split retune (`setWeightRecords`
   applied, `setGateParams` half vetoed), an SWA `replaceOwner` (`OwnerRemoved`, `OwnerAdded`, `OwnerReplaced`),
-  and a `setWeightRecords` cancelled by `cancelPendingWeight` (`write-cancelled`, first seen). Not sent by him (the
+  and a `setWeightRecords` cancelled by `cancelPendingWeight` (`write-cancelled`, first seen). rvagg's later bundle
+  (v2, received 2026-09-23) re-slots the split retune to [7586, 7706] and notes the earlier omission was "caught by
+  the watchtower"; the record has it inside that window. Not sent by him (the
   record has those epochs): S-7b and S-11a, two calls meant to revert, and S-4a, a self-send outside the watchtower's
   scope. New on real data here: the outcome read for `SetWeightRecords` and `SetDistribution`, `write-cancelled`,
   a contract upgrade with its hold, an owner rotation.
