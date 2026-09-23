@@ -166,7 +166,7 @@ are in this code, not in the chain:
 
 ## Changes in the reader after the 2026-09-21 test (no publish needed)
 
-1. Decode the three new f02 events of builtin-actors v19.0.0 (`period-folded`: `stream-id`, `cause`, `accrued`,
+1. DONE 2026-09-22 (decoder and one test, real data not seen yet): decode the three new f02 events of builtin-actors v19.0.0 (`period-folded`: `stream-id`, `cause`, `accrued`,
    `dust`; `shares-set`: `stream-id`, `shares` rows; `address-replaced`: `stream-id`, `old-recipient`,
    `new-recipient`; `emit.rs` at `3662c66`). Today they are recorded by `$type` with raw entries, nothing is lost.
    `period-folded` matters most: it is the only way to see a fold and its dust per stream; today only the burn

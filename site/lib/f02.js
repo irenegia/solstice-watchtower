@@ -81,6 +81,13 @@ export function decodeActorEvent(event, prefix = 'f') {
   if ('payload' in kv) fields.payload = decodePayload(Number(kv.op), kv.payload, prefix)
   if ('recipient' in kv) fields.recipient = `${prefix}0${kv.recipient}`
   if ('amount' in kv) fields.amountAttoFil = bigFromBytes(kv.amount).toString()
+  // period-folded, shares-set, address-replaced: builtin-actors v19.0.0, actors/reward/src/emit.rs at 3662c66
+  if ('cause' in kv) fields.cause = kv.cause
+  if ('accrued' in kv) fields.accruedAttoFil = bigFromBytes(kv.accrued).toString()
+  if ('dust' in kv) fields.dustAttoFil = bigFromBytes(kv.dust).toString()
+  if ('shares' in kv) fields.shares = kv.shares.map(([r, s]) => ({ recipient: `${prefix}0${r}`, share: String(s) }))
+  if ('old-recipient' in kv) fields.oldRecipient = `${prefix}0${kv['old-recipient']}`
+  if ('new-recipient' in kv) fields.newRecipient = `${prefix}0${kv['new-recipient']}`
   return { name, fields }
 }
 

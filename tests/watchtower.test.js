@@ -47,6 +47,15 @@ test('f02 event: claim-payout', () => {
   assert.deepEqual(decodeActorEvent(ev, 't'), { name: 'claim-payout', fields: { streamId: 2, recipient: 't01234', amountAttoFil: '5000000000000000000' } })
 })
 
+test('f02 events added in builtin-actors v19.0.0: period-folded, shares-set, address-replaced', () => {
+  const folded = { entries: [entry('$type', 'period-folded'), entry('stream-id', 2), entry('cause', 'SetShares'), entry('accrued', tokenBytes(10n ** 18n)), entry('dust', tokenBytes(3n))] }
+  assert.deepEqual(decodeActorEvent(folded, 't'), { name: 'period-folded', fields: { streamId: 2, cause: 'SetShares', accruedAttoFil: '1000000000000000000', dustAttoFil: '3' } })
+  const set = { entries: [entry('$type', 'shares-set'), entry('stream-id', 2), entry('shares', [[1011, 750000000000000000n], [1018, 250000000000000000n]])] }
+  assert.deepEqual(decodeActorEvent(set, 't').fields.shares, [{ recipient: 't01011', share: '750000000000000000' }, { recipient: 't01018', share: '250000000000000000' }])
+  const moved = { entries: [entry('$type', 'address-replaced'), entry('stream-id', 2), entry('old-recipient', 1018), entry('new-recipient', 99)] }
+  assert.deepEqual(decodeActorEvent(moved, 't'), { name: 'address-replaced', fields: { streamId: 2, oldRecipient: 't01018', newRecipient: 't099' } })
+})
+
 test('f02 state behind streams_root', () => {
   const service = [2, flat(10n, 4000000), [idAddress(5000), [[idAddress(1234), 10n ** 18n]], [[idAddress(1234), tokenBytes(7n)]], []]]
   const state = decodeStreamsState(dagCbor.encode([[[1, flat(90n, 4000000), null], service], [], [[null, 1, stepTo15, 4100720]]]), 't')
