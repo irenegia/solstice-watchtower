@@ -130,10 +130,26 @@ calls from a web page (`access-control-allow-origin: *`, checked 2026-09-18 on t
   up to epoch N". Calibnet the same day: the first two governance actions (`setAdmittedLists`, `setPricingParams`),
   each sent through both owner multisigs, decoded with `via: sraOwnerN` and the `Submitted` / `Approved` /
   `...Updated` events.
-- Still not tested on real data: the `write-cancelled`, `write-dropped` and `write-applied` events; a
-  `dropped or replaced` outcome; the three f02 events added in builtin-actors v19.0.0 (`period-folded`,
-  `shares-set`, `address-replaced`; PR #1794, 2026-09-22), which the decoder does not know yet and records as
-  their `$type` with raw entries. Calibnet activation (2026-09-23) is the first chance for these.
+- Rest of the gamma run, 2026-09-21 12:20 UTC to 2026-09-22 04:44 UTC (epochs 6155 to 8128), checked on 2026-09-23
+  against rvagg's update 1 (rows S-1 to S-12, S-6, G-13 to G-21; the discretionary writes he moved to the end of the
+  run). Read by the timer, no gap. Every row he sent is in the record, at his epoch or a few later: the correction
+  rows (a `VolumeCorrected` for an Orchestrator with no post in that quarter), the one-recipient `SharesSubmitted(5)`,
+  two claims with matching claim checks (one with two wallets), pricing params and admitted lists by both owners,
+  reassign / cancel / register of a binding, `addOrchestrator` and `removeOrchestrator` proposals vetoed, a
+  `setGateParams` armed then vetoed with the gate check passing in between, the SRA upgrade (`upgradeToAndCall` by
+  both owners, completion after the hold, `Upgraded`), three `replaceWallet`, the empty-quarter `submitShares(10)`
+  with no event, `removeOrchestrator(orch2)`, `setDistribution` to the f1 writer and back to the SRA (both
+  `applied`), `submitShares(11)` reverting `SetSharesFailed(18)` then the writer's f02 `SetShares`, and six gate
+  steps each queued and `applied`. Also in the record, not in his table: the split retune (`setWeightRecords`
+  applied, `setGateParams` half vetoed), an SWA `replaceOwner` (`OwnerRemoved`, `OwnerAdded`, `OwnerReplaced`),
+  and a `setWeightRecords` cancelled by `cancelPendingWeight` (`write-cancelled`, first seen). Not sent by him (the
+  record has those epochs): S-7b and S-11a, two calls meant to revert, and S-4a, a self-send outside the watchtower's
+  scope. New on real data here: the outcome read for `SetWeightRecords` and `SetDistribution`, `write-cancelled`,
+  a contract upgrade with its hold, an owner rotation.
+- Still not tested on real data: the `write-dropped` and `write-applied` events; a `dropped or replaced` outcome;
+  the three f02 events added in builtin-actors v19.0.0 (`period-folded`, `shares-set`, `address-replaced`;
+  PR #1794, 2026-09-22), decoded since 2026-09-22 but not yet seen. Calibnet activation (2026-09-28) is the first
+  chance for these, if the calibnet Lotus release ships v19.0.0.
 
 ## Known limits of the PoC
 
