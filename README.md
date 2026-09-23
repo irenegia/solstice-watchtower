@@ -8,8 +8,10 @@ Reads what landed on chain in f02, the SWA and the SRA (FIP-0118) and shows it o
 > has been checked: 12 automated tests on hand-written samples, two records compared by hand with a block explorer, and
 > one day of butterflynet test data (2026-09-21) compared with the test plan of the person who ran it (see DESIGN.md).
 
-- Live page, hosted on Filecoin (Filecoin Pin): https://inbrowser.link/ipfs/bafybeihk4odsbmor5dbsjtt5uk4d3yl6z4hi3nadjqtzdpqrqlp25uylye/
-  This link is fixed to one version of the page; the data stays fresh because the page fetches the record from this repo.
+- Live page, hosted on Filecoin (Filecoin Pin), stable address through ENS: https://solsticewatchtower.eth.limo/
+  (butterflynet test view: https://solsticewatchtower.eth.limo/?data=butterfly-gamma). The ENS name `solsticewatchtower.eth`
+  points to the current version's CID (today `bafybeihrtha7j3z65six4cos4ozvhi35ijiir6o4s75zengtqji5ur4ftq`) and is updated at
+  each publish; the data stays fresh because the page fetches the record from this repo.
 - Scope and discussion: https://github.com/filecoin-project/solstice/issues/69
 - Design and its decisions: [DESIGN.md](DESIGN.md)
 - How each FIP-0118 action can be observed on chain, by anyone: [OBSERVABILITY.md](OBSERVABILITY.md)
