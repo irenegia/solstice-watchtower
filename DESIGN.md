@@ -164,6 +164,29 @@ are in this code, not in the chain:
 4. In part 2 ("What landed"), show the newest row first, not last (asked by Irene 2026-09-21): newest quarter
    on top, and inside a quarter the newest event or message on top.
 
+## Calibnet redeploy and mainnet (2026-09-23)
+
+The calibnet SRA and SWA were redeployed on 2026-09-22 at new addresses (solstice PR #83 "deploy v1", William:
+"we agreed it would be easier to redeploy the contracts"; `deployments.json` at `0006edc`), and the calibnet upgrade
+moved to epoch 4109133, Mon 2026-09-28 12:59:30 UTC (BigLep's Slack post of 2026-09-22; Lotus PR #13809). A redeploy
+carries nothing over: no owner action, no lists, no pricing params. The two `setAdmittedLists` and `setPricingParams`
+of 2026-09-21 went to the old SRA and must be sent again on the new one.
+
+Decisions (Irene, 2026-09-23):
+- `config/calibnet.json` points to the new contracts, from epoch 4092521 (three before the new SRA deployment); the
+  record of the first deployment is frozen in `site/data/calibnet-2026-09-17/` and the page shows it as the last group
+  of the calibnet history, with a note. One calibnet view, not two.
+- A `mainnet` view from day one: the same two addresses were deployed on mainnet on 2026-09-22 (SRA at epoch 6393228,
+  SWA at 6393232); `deployments.json` carries `activationEpoch` 6450120, but the mainnet upgrade date is not confirmed
+  (Irene, 2026-09-23), so the page names no date. It shows only the deployment events until the upgrade,
+  and tests the mainnet path (endpoint, explorer links) before it matters.
+- Butterfly gamma stays while rvagg's run lasts; butterfly alpha left the page (its record is in `archive/`). Older
+  page versions stay reachable at their CIDs, listed in the README.
+- Stable address: the ENS name `solsticewatchtower.eth` (registered by Irene 2026-09-22, Jennifer's suggestion),
+  content hash set to the current CID at each publish; https://solsticewatchtower.eth.limo/ .
+- The public endpoint capped `eth_getLogs` at 360 blocks in one answer on 2026-09-23 (2880 on 2026-09-18), so the
+  reader now asks in chunks of 360.
+
 ## Changes in the reader after the 2026-09-21 test (no publish needed)
 
 1. DONE 2026-09-22 (decoder and one test, real data not seen yet): decode the three new f02 events of builtin-actors v19.0.0 (`period-folded`: `stream-id`, `cause`, `accrued`,

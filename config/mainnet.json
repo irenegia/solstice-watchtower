@@ -1,0 +1,26 @@
+{
+  "network": "mainnet",
+  "rpcUrl": "https://api.node.glif.io/rpc/v1",
+  "addressPrefix": "f",
+  "genesisTimestamp": 1598306400,
+  "epochSeconds": 30,
+  "activationEpoch": 6450120,
+  "epochsPerQuarter": 262974,
+  "swaTimelockEpochs": 20160,
+  "f02": "f02",
+  "sra": "0x0339f205314C8210AF7Cb075d1A96D012e7896a9",
+  "swa": "0x66C11A9F6dfEC3c1557958cF9f575a023EB01421",
+  "owners": {
+    "sraOwner1": "0xFb1B58925947E52B3f75BAc3D9fB5325cfb36371",
+    "sraOwner2": "0x6c724FF811f51945d95872CF99FBd3fF63f7cFa2",
+    "swaOwner1": "0x024a3c8CCA435db64D2dfa0f903E4823A5eBdf63",
+    "swaOwner2": "0x4d6db5600c908b3C9b9888cFef43f27F38b203e9"
+  },
+  "wallets": {
+    "f099 (burn)": "0xff00000000000000000000000000000000000063",
+    "initialOrchestrator": "0x97A90f5696be5E3C8d3752C92Adac287c2b4484e"
+  },
+  "dataDir": "site/data/mainnet",
+  "startEpoch": 6393225,
+  "source": "solstice deployments.json on main at 0006edc (chain 314): activationEpoch 6450120 as in deployments.json (the mainnet upgrade date is NOT confirmed; the value can still move), quarter 262974, hold 20160; SWA timelock 20160 (7 days) per FIP-0118. Contracts deployed 2026-09-22: SRA at 6393228 (tx 0x0f9621c1...), SWA at 6393232 (tx 0xf543cbf0...), found with eth_getLogs (Upgraded). startEpoch is three epochs before the SRA deployment."
+}

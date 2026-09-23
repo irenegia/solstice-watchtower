@@ -17,6 +17,7 @@ const LAG = 5
 // 720 epochs = 6 hours of chain. It was 120 (1 hour) until 2026-09-18: GitHub then started the job about once an
 // hour or less, so each run read less chain than had passed and the record fell behind after every late run.
 const MAX_EPOCHS_PER_RUN = 720
+const LOG_CHUNK = 360
 const ZERO = '0x0000000000000000000000000000000000000000'
 // f02 state fields that change every epoch and are not part of FIP-0118: left out of the record.
 const NOISY = ['Epoch', 'ThisEpochReward', 'TotalStoragePowerReward', 'ThisEpochRewardSmoothed','CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime']
@@ -80,7 +81,10 @@ const unreadable = [] // epochs whose block the node could not serve; recorded a
 
 if (contracts.size) {
   // 2. SRA and SWA events
-  for (const log of await rpc('eth_getLogs', [{ address: [...contracts.keys()], fromBlock: toHex(from), toBlock: toHex(to) }])) {
+  // The public endpoint caps one eth_getLogs query (2880 blocks on 2026-09-18, 360 on one answer of 2026-09-23), so the range is read in chunks.
+  const logs = []
+  for (let a = from; a <= to; a += LOG_CHUNK) logs.push(...await rpc('eth_getLogs', [{ address: [...contracts.keys()], fromBlock: toHex(a), toBlock: toHex(Math.min(to, a + LOG_CHUNK - 1)) }]))
+  for (const log of logs) {
     const { name, fields } = decodeLog(log)
     rec('event', Number(log.blockNumber), contracts.get(log.address.toLowerCase()), name, fields, { tx: log.transactionHash, raw: { topics: log.topics, data: log.data } })
   }

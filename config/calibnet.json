@@ -4,12 +4,12 @@
   "addressPrefix": "t",
   "genesisTimestamp": 1667326380,
   "epochSeconds": 30,
-  "activationEpoch": 4094734,
+  "activationEpoch": 4109134,
   "epochsPerQuarter": 2880,
   "swaTimelockEpochs": 720,
   "f02": "t02",
-  "sra": "0xeDfCd0947F7E9d58E0035f032520d75ce8eCA451",
-  "swa": "0xDE4fBd083F18f96C241DdE0A83C3EDC422Be9BA6",
+  "sra": "0x0339f205314C8210AF7Cb075d1A96D012e7896a9",
+  "swa": "0x66C11A9F6dfEC3c1557958cF9f575a023EB01421",
   "owners": {
     "sraOwner1": "0xFb1B58925947E52B3f75BAc3D9fB5325cfb36371",
     "sraOwner2": "0x6c724FF811f51945d95872CF99FBd3fF63f7cFa2",
@@ -21,6 +21,6 @@
     "initialOrchestrator": "0x97A90f5696be5E3C8d3752C92Adac287c2b4484e"
   },
   "dataDir": "site/data/calibnet",
-  "startEpoch": 4078415,
-  "source": "solstice deployments.json at 0fa8cca (chain 314159). startEpoch is three epochs before the SRA deployment block 0x3e3b52 (4078418); the SWA followed at 0x3e3b56 (4078422). Both found with eth_getLogs on 2026-09-18."
+  "startEpoch": 4092521,
+  "source": "solstice deployments.json on main at 0006edc (PR #83 'deploy v1', 2026-09-22, chain 314159): the contracts were REDEPLOYED at new addresses; activationEpoch 4109134 = Mon 2026-09-28 13:00 UTC (Lotus UpgradeSolsticeHeight 4109133, PR lotus #13809). startEpoch is three epochs before the new SRA deployment block 4092524 (Upgraded event, tx 0x20ed9f5b...); the SWA followed at 4092528. The record of the 2026-09-17 deployment (SRA 0xeDfC..., SWA 0xDE4f..., activation 4094734) is frozen in site/data/calibnet-2026-09-17/."
 }

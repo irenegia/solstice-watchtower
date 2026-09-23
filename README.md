@@ -8,10 +8,20 @@ Reads what landed on chain in f02, the SWA and the SRA (FIP-0118) and shows it o
 > has been checked: 12 automated tests on hand-written samples, two records compared by hand with a block explorer, and
 > one day of butterflynet test data (2026-09-21) compared with the test plan of the person who ran it (see DESIGN.md).
 
-- Live page, hosted on Filecoin (Filecoin Pin), stable address through ENS: https://solsticewatchtower.eth.limo/
-  (butterflynet test view: https://solsticewatchtower.eth.limo/?data=butterfly-gamma). The ENS name `solsticewatchtower.eth`
-  points to the current version's CID (today `bafybeihrtha7j3z65six4cos4ozvhi35ijiir6o4s75zengtqji5ur4ftq`) and is updated at
-  each publish; the data stays fresh because the page fetches the record from this repo.
+- Live page, hosted on Filecoin (Filecoin Pin), stable address through ENS: **https://solsticewatchtower.eth.limo/**
+  Views: calibnet (default), `?data=mainnet`, `?data=butterfly-gamma`. The ENS name `solsticewatchtower.eth` points to the
+  current version's CID and is updated at each publish; the data stays fresh because the page fetches the record from
+  this repo (`site/data/`).
+- Older versions, fixed to their CID (they keep working, but show only what their view list had):
+
+  | Published | Link | Views |
+  |---|---|---|
+  | 2026-09-23 | https://inbrowser.link/ipfs/bafybeihrtha7j3z65six4cos4ozvhi35ijiir6o4s75zengtqji5ur4ftq/ | calibnet (first deployment, 2026-09-17), butterfly gamma, butterfly alpha |
+  | 2026-09-20 | https://inbrowser.link/ipfs/bafybeihk4odsbmor5dbsjtt5uk4d3yl6z4hi3nadjqtzdpqrqlp25uylye/ | the same, plus the sample and real-test views |
+  | 2026-09-18 | https://inbrowser.link/ipfs/bafybeiaalkk7ullf4rrllipm3wuvry7ebv7yuzwmecmplz4iqap2th5edi/ | calibnet (first deployment), sample, real test |
+
+  The butterfly alpha record now lives in `archive/butterfly-alpha/`; the first calibnet deployment's record in
+  `site/data/calibnet-2026-09-17/` (frozen, shown at the bottom of the calibnet history).
 - Scope and discussion: https://github.com/filecoin-project/solstice/issues/69
 - Design and its decisions: [DESIGN.md](DESIGN.md)
 - How each FIP-0118 action can be observed on chain, by anyone: [OBSERVABILITY.md](OBSERVABILITY.md)
@@ -19,12 +29,12 @@ Reads what landed on chain in f02, the SWA and the SRA (FIP-0118) and shows it o
 ![The page with SAMPLE data, 2026-09-17](screenshots/sample-view.png)
 
 *The page with SAMPLE data, written by hand to test it. Nothing in this screenshot happened on chain. The SRA and
-the SWA were deployed on calibnet on 2026-09-17; the network upgrade that activates FIP-0118 there is on
-2026-09-23. Until then the real record holds the deployment events and the reads, and f02 has no queue. The
+the SWA were deployed on calibnet on 2026-09-17 and redeployed on 2026-09-22; the network upgrade that activates FIP-0118 there is on
+Mon 2026-09-28 13:00 UTC. Until then the real record holds the deployment events and the reads, and f02 has no queue. The
 "sample" and "real test" views were removed from the page on 2026-09-22; the real views are calibnet and the two butterflynet test networks.*
 
-A scheduled job (`.github/workflows/read.yml`) runs the reader every 10 minutes and commits the record to
-`site/data/calibnet/`. It only reads from a public endpoint and holds no key.
+A scheduled job (`.github/workflows/read.yml`) runs the reader every 15 minutes (started by an outside timer) and commits the records to
+`site/data/calibnet/`, `site/data/mainnet/` and `site/data/butterfly-gamma/`. It only reads from a public endpoint and holds no key.
 
 Needs Node.js 22 or newer.
 
