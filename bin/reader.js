@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, decodeFunctionResult } from 'viem'
 import { makeRpc, toHex, epochToTime, quarterOf } from '../lib/chain.js'
-import { decodeActorEvent, decodeStreamsState, idToEthAddress, slotOf, writeOutcome } from '../site/lib/f02.js'
+import { decodeActorEvent, decodeStreamsState, decodeF02Params, idToEthAddress, slotOf, writeOutcome } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert, plain } from '../lib/evm.js'
 
 // ponytail: no reorg handling. The reader stays LAG epochs behind the head; a deeper reorg can leave an
@@ -19,8 +19,11 @@ const LAG = 5
 const MAX_EPOCHS_PER_RUN = 720
 const LOG_CHUNK = 360
 const ZERO = '0x0000000000000000000000000000000000000000'
-// f02 state fields that change every epoch and are not part of FIP-0118: left out of the record.
-const NOISY = ['Epoch', 'ThisEpochReward', 'TotalStoragePowerReward', 'ThisEpochRewardSmoothed','CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime']
+// f02 state fields that change every epoch: left out of the record, so a 'f02 state' line means a real change. The four
+// FIP-0118 counters (TotalMintedReward, TotalBurnMinted, TotalExplicitMinted, Accrued) move with every block reward too;
+// they are readable live and the burn shows in the f099 balance.
+const NOISY = ['Epoch', 'ThisEpochReward', 'TotalStoragePowerReward', 'ThisEpochRewardSmoothed', 'CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime',
+  'TotalMintedReward', 'TotalBurnMinted', 'TotalExplicitMinted', 'Accrued']
 
 const cfg = JSON.parse(readFileSync(process.argv[2] ?? 'config/calibnet.json', 'utf8'))
 const rpc = makeRpc(cfg.rpcUrl)
@@ -136,13 +139,16 @@ for (let epoch = Math.max(from, cfg.activationEpoch || Infinity); epoch <= to; e
   for (const { Cid, Message: m } of messages ?? []) {
     if (m.To.slice(1) !== f02Id) continue
     const receipt = (await rpc('Filecoin.StateSearchMsg', [null, Cid, -1, true]))?.Receipt
-    let params
+    const name = F02_METHODS[m.Method] ?? `method ${m.Method}`
+    let fields
     try {
-      params = m.Params ? plainCbor(dagCbor.decode(Buffer.from(m.Params, 'base64'))) : null
+      const v = m.Params ? dagCbor.decode(Buffer.from(m.Params, 'base64')) : null
+      const decoded = v === null ? null : decodeF02Params(name, v, cfg.addressPrefix)
+      fields = decoded === v ? { params: plainCbor(v) } : decoded
     } catch {
-      params = m.Params // kept as sent
+      fields = { params: m.Params } // kept as sent
     }
-    rec('message', epoch, 'f02', F02_METHODS[m.Method] ?? `method ${m.Method}`, { params }, { from: m.From, ok: receipt?.ExitCode === 0, error: receipt?.ExitCode ? `exit code ${receipt.ExitCode}` : undefined, msgCid: Cid['/'] })
+    rec('message', epoch, 'f02', name, fields, { from: m.From, ok: receipt?.ExitCode === 0, error: receipt?.ExitCode ? `exit code ${receipt.ExitCode}` : undefined, msgCid: Cid['/'] })
   }
 }
 function plainCbor(v) {
@@ -258,6 +264,30 @@ if (sra) {
   for (const past of [q - 1, q - 2].filter((x) => x >= 1)) {
     await read('SRA', `SRA aggregatedFilecoinPayVolume(${past})`, () => view(sra, 'aggregatedFilecoinPayVolume', [BigInt(past)]))
   }
+  // Per-Orchestrator posted value for the current quarter and the last one (fpvOf), and the Orchestrator each
+  // registered pair points to (bindingOf). Orchestrators and pairs come from the record's own events (rvagg's
+  // suggested reads, 2026-09-21). fpvOf reads 0 for a quarter whose slot was erased by a newer write.
+  const { orchestrators, pairs } = knownFromRecord()
+  for (const orch of orchestrators) for (const qq of [q, q - 1].filter((x) => x >= 1)) {
+    await read('SRA', `SRA fpvOf(${qq}, ${orch})`, () => view(sra, 'fpvOf', [BigInt(qq), orch]))
+  }
+  for (const [payer, operator] of pairs) {
+    await read('SRA', `SRA bindingOf(${payer}, ${operator})`, () => view(sra, 'bindingOf', [payer, operator]))
+  }
+}
+
+// Admitted Orchestrators and registered pairs, replayed from the events already in the record plus this run's.
+function knownFromRecord() {
+  const past = existsSync(recordsPath) ? readFileSync(recordsPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []
+  const orchestrators = new Set(), pairs = new Map()
+  for (const r of [...past, ...records]) {
+    if (r.kind !== 'event' || r.source !== 'SRA') continue
+    if (r.name === 'OrchestratorAdmitted') orchestrators.add(r.fields.orch)
+    if (r.name === 'OrchestratorRemoved') orchestrators.delete(r.fields.orch)
+    if (r.name === 'BindingDeclared' || r.name === 'BindingReassigned') pairs.set(`${r.fields.payer}|${r.fields.operator}`, [r.fields.payer, r.fields.operator])
+    if (r.name === 'BindingCanceled') pairs.delete(`${r.fields.payer}|${r.fields.operator}`)
+  }
+  return { orchestrators: [...orchestrators], pairs: [...pairs.values()] }
 }
 
 records.sort((a, b) => a.epoch - b.epoch)

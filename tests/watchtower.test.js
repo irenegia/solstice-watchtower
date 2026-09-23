@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, encodeErrorResult } from 'viem'
 import { quarterOf, epochToTime } from '../lib/chain.js'
-import { decodeActorEvent, decodeStreamsState, computeWeight, bigFromBytes, idToEthAddress, writeOutcome } from '../site/lib/f02.js'
+import { decodeActorEvent, decodeStreamsState, decodeF02Params, computeWeight, bigFromBytes, idToEthAddress, writeOutcome } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert } from '../lib/evm.js'
 import { PCT, entry, idAddress, tokenBytes, flat, sampleLog } from './samples.js'
 
@@ -129,4 +129,12 @@ test('outcome of a queued write, judged from the f02 state after its effective e
   const remove = { op: 'RemoveStream', streamId: 2, effectiveEpoch: 4100720, payload: {} }
   assert.equal(writeOutcome(remove, state(10n, [])), 'dropped or replaced') // stream 2 is still there
   assert.equal(writeOutcome(remove, decodeStreamsState(dagCbor.encode([[[1, flat(85n, 4000000), null]], [], []]), 't')), 'applied')
+})
+
+test('parameters of messages sent to f02: Claim, SetShares, ReplaceAddress', () => {
+  assert.deepEqual(decodeF02Params('Claim', [2, [idAddress(1011), idAddress(1018)]], 't'), { streamId: 2, wallets: ['t01011', 't01018'] })
+  assert.deepEqual(decodeF02Params('SetShares', [2, [[idAddress(1011), 10n ** 18n]]], 't'), { streamId: 2, shares: [{ recipient: 't01011', share: '1000000000000000000' }] })
+  assert.deepEqual(decodeF02Params('ReplaceAddress', [2, idAddress(1018), idAddress(99)], 't'), { streamId: 2, oldAddress: 't01018', newAddress: 't099' })
+  const other = [1, 2]
+  assert.equal(decodeF02Params('RemoveStream', other, 't'), other) // unknown shapes pass through
 })

@@ -137,3 +137,16 @@ export function writeOutcome(write, state) {
   else if (write.op === 'SetDistribution') shown = stream(write.streamId)?.distribution?.writer === write.payload.writer
   return shown ? 'applied' : 'dropped or replaced'
 }
+
+// Parameters of a message sent to f02, as CBOR-decoded by the caller (builtin-actors actors/reward/src/types.rs at 3662c66).
+// Unknown methods are returned as they are.
+export function decodeF02Params(method, v, prefix = 'f') {
+  const addr = (b) => addressFromBytes(b, prefix)
+  const str = (x) => (typeof x === 'bigint' ? x.toString() : String(x))
+  switch (method) {
+    case 'Claim': return { streamId: Number(v[0]), wallets: v[1].map(addr) }
+    case 'SetShares': return { streamId: Number(v[0]), shares: v[1].map(([r, sh]) => ({ recipient: addr(r), share: str(sh) })) }
+    case 'ReplaceAddress': return { streamId: Number(v[0]), oldAddress: addr(v[1]), newAddress: addr(v[2]) }
+    default: return v
+  }
+}

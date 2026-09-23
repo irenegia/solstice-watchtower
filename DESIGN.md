@@ -194,10 +194,17 @@ Decisions (Irene, 2026-09-23):
    `new-recipient`; `emit.rs` at `3662c66`). Today they are recorded by `$type` with raw entries, nothing is lost.
    `period-folded` matters most: it is the only way to see a fold and its dust per stream; today only the burn
    total is visible. All three come from explicit messages only, so a fold inside the block reward stays invisible.
-2. Leave out the f02 state fields that change every epoch after activation (`TotalMintedReward`,
-   `TotalBurnMinted`, `TotalExplicitMinted`; keep `Accrued`), so a "f02 state" line means a real change.
-3. Decode the parameters of a `Claim` message (stream id, wallets) instead of showing raw bytes.
-4. Add the state reads rvagg suggests: `fpvOf(q, orch)`, `totalUsd[q]`, `bindingOf`.
+2. DONE 2026-09-23: the f02 state read leaves out the four FIP-0118 counters that move with every block reward
+   (`TotalMintedReward`, `TotalBurnMinted`, `TotalExplicitMinted`, `Accrued`), so a "f02 state" line means a real
+   change (SWA actor, timelock, streams root). The counters stay readable live; the burn shows in the f099 balance.
+3. DONE 2026-09-23: the parameters of `Claim`, `SetShares` and `ReplaceAddress` messages are decoded (`decodeF02Params`
+   in `site/lib/f02.js`, from builtin-actors `types.rs` at `3662c66`); other methods keep the raw CBOR.
+4. DONE 2026-09-23 for `fpvOf(q, orch)` (current and previous quarter, for every Orchestrator admitted in the record
+   and not removed) and `bindingOf(payer, operator)` (every pair declared or reassigned in the record and not
+   cancelled). `totalUsd[q]` has no public getter before binding (`aggregatedFilecoinPayVolume` reverts `NotBound`),
+   so the current quarter's running total is not read; the bound value is, as before. Limit: an Orchestrator seated
+   before the record starts (the migration's initial one, when the record starts after deployment) is known only
+   through its `OrchestratorAdmitted` event at deployment, which the calibnet and mainnet records have.
 
 ## Later steps (not built)
 
