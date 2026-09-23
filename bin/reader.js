@@ -50,7 +50,7 @@ const rec = (kind, epoch, source, name, fields, extra = {}) =>
 // 1. f02 actor events. A node can have this API switched off; that is recorded, and the run goes on.
 let f02Events = []
 try {
-  f02Events = (await rpc('Filecoin.GetActorEventsRaw', [{ addresses: [cfg.f02], fromHeight: from, toHeight: to }])) ?? []
+  for (let a = from; a <= to; a += LOG_CHUNK) f02Events.push(...((await rpc('Filecoin.GetActorEventsRaw', [{ addresses: [cfg.f02], fromHeight: a, toHeight: Math.min(to, a + LOG_CHUNK - 1) }])) ?? [])) // same 360-block cap as eth_getLogs
 } catch (err) {
   rec('gap', from, 'reader', 'f02 events could not be read', { fromEpoch: from, toEpoch: to, reason: err.message.slice(0, 160) })
 }
