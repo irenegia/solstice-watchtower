@@ -92,6 +92,15 @@ test('contract event: VolumePosted', () => {
   assert.equal(decodeLog({ topics: ['0x' + 'ab'.repeat(32)], data: '0x' }).name, 'unknown(0xabababab)')
 })
 
+test('SWA events added in solstice PR #79: GateParamsSet and WeightRecordsQueued', () => {
+  const set = decodeLog(sampleLog('GateParamsSet', { params: { target: { base: 3500n * 10n ** 18n, stepRatio: 27n * 10n ** 17n }, steps: 2n } }))
+  assert.equal(set.name, 'GateParamsSet')
+  assert.deepEqual(set.fields.params, { target: { base: '3500000000000000000000', stepRatio: '2700000000000000000' }, steps: '2' })
+  const queued = decodeLog(sampleLog('WeightRecordsQueued', { updates: [{ id: 2n, record: { vStart: 1n, slope: 0n, tStart: 5n, floor: 1n, cap: 1n } }] }))
+  assert.equal(queued.name, 'WeightRecordsQueued')
+  assert.equal(queued.fields.updates[0].id, '2')
+})
+
 test('message: a direct call, and the same call sent through a Safe', () => {
   const input = encodeFunctionData({ abi, functionName: 'postVolume', args: [6n, 123n] })
   assert.deepEqual(decodeCall(input), { name: 'postVolume', fields: { q: '6', fpv: '123' } })
