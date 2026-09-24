@@ -33,14 +33,17 @@ jobs:
       - run: npm ci
       - if: ${{ inputs.test_slack }}
         run: node bin/slack-test.js
-        env: { SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }} }
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
       # SLACK_WEBHOOK (a repository secret, optional): the reader posts one Slack message per run that found something
       # new. Without the secret nothing is sent. Butterflynet opts out in its config.
       - run: node bin/reader.js config/calibnet.json
-        env: { SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }} }
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
       # Mainnet: the contracts are deployed (2026-09-22); the upgrade date is not confirmed. Reads only the endpoint.
       - run: node bin/reader.js config/mainnet.json
-        env: { SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }} }
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         continue-on-error: true
       # Butterflynet gamma, the nv29 test network (lotus-infra issue #1654). A failure here must not stop the
       # calibnet record from being committed, so this step may fail without failing the job.
