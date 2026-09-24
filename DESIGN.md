@@ -261,8 +261,8 @@ Decisions (Irene, 2026-09-23):
 4. The alert, in its simplest form, built 2026-09-24 (Irene's ask, after the question how to follow the rehearsal
    without polling): the job posts one Slack message per run that found something new on calibnet or mainnet
    (events, messages with their result, gaps, queued write outcomes, claim checks; routine reads left out; at most
-   40 lines) to `#fil-upgrade-filplus`, through an Incoming WebHook created by TippyFlits (app `solstice-watchtower`,
-   Irene is app collaborator). The URL is the repository secret `SLACK_WEBHOOK`; without it nothing is sent; a
+   40 lines) to `#fil-solstice-watchtower` (first to `#fil-upgrade-filplus`, moved the same day to a channel of its own),
+   through an Incoming WebHook created by TippyFlits (app `solstice-watchtower`, Irene is app collaborator). The URL is the repository secret `SLACK_WEBHOOK`; without it nothing is sent; a
    failed post never fails the run; butterflynet is opted out (`notify: false`). A manual start with `test_slack`
    posts one marked test line (`bin/slack-test.js`). No judgment: people compare the lines with the rehearsal
    plan's watchtower column and answer in the thread. Lesson from the same day: in a workflow file, `env` with
