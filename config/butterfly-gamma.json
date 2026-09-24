@@ -20,5 +20,6 @@
     "initialOrchestrator": "0x48C7DC38e74C9fA9eA6484Ad6Ad0520349dC9B40"
   },
   "dataDir": "site/data/butterfly-gamma",
-  "startEpoch": 10
+  "startEpoch": 10,
+  "notify": false
 }

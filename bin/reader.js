@@ -8,6 +8,7 @@ import { encodeFunctionData, decodeFunctionResult } from 'viem'
 import { makeRpc, toHex, epochToTime, quarterOf } from '../lib/chain.js'
 import { decodeActorEvent, decodeStreamsState, decodeF02Params, idToEthAddress, slotOf, writeOutcome } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert, plain } from '../lib/evm.js'
+import { notify } from '../lib/notify.js'
 
 // ponytail: no reorg handling. The reader stays LAG epochs behind the head; a deeper reorg can leave an
 // orphaned line in the append-only record. Upgrade: re-check the last N epochs on every run.
@@ -296,3 +297,4 @@ if (records.length) appendFileSync(recordsPath, records.map((r) => JSON.stringif
 const { network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs } = cfg
 writeFileSync(statusPath, JSON.stringify({ network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads, pending: status.pending }, null, 2))
 console.log(`epochs ${from}..${to} (chain head ${chainHead}): ${records.length} new records -> ${recordsPath}`)
+await notify(records, cfg, from, to) // Slack, only when SLACK_WEBHOOK is set and the network is not opted out

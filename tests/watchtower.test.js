@@ -9,6 +9,7 @@ import { quarterOf, epochToTime } from '../lib/chain.js'
 import { decodeActorEvent, decodeStreamsState, decodeF02Params, computeWeight, bigFromBytes, idToEthAddress, writeOutcome } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert } from '../lib/evm.js'
 import { PCT, entry, idAddress, tokenBytes, flat, sampleLog } from './samples.js'
+import { slackText } from '../lib/notify.js'
 
 const cfg = JSON.parse(readFileSync(new URL('../config/calibnet.json', import.meta.url), 'utf8'))
 const stepTo15 = dagCbor.encode([[[2, flat(15n, 4100000)]]]) // payload of a StepWeightRecords write: stream 2 to 15%
@@ -146,4 +147,23 @@ test('parameters of messages sent to f02: Claim, SetShares, ReplaceAddress', () 
   assert.deepEqual(decodeF02Params('ReplaceAddress', [2, idAddress(1018), idAddress(99)], 't'), { streamId: 2, oldAddress: 't01018', newAddress: 't099' })
   const other = [1, 2]
   assert.equal(decodeF02Params('RemoveStream', other, 't'), other) // unknown shapes pass through
+})
+
+test('slack text: one message per run, notable records only, reverted and gap marked', () => {
+  const t = '2026-09-28T13:04:00.000Z'
+  const records = [
+    { kind: 'read', epoch: 1, time: t, source: 'balance', name: 'balance of f099 (burn)', fields: { attoFil: '1' } }, // routine read: left out
+    { kind: 'message', epoch: 1, time: t, source: 'SRA', name: 'setAdmittedLists', via: 'sraOwner2', ok: true, fields: { stablecoins: ['0xb3'] } },
+    { kind: 'message', epoch: 2, time: t, source: 'SRA', name: 'submitShares', ok: false, error: 'SetSharesFailed(17)', fields: { q: '2' } },
+    { kind: 'gap', epoch: 3, time: t, source: 'reader', name: 'could not be read', fields: { fromEpoch: 3, toEpoch: 5 } },
+  ]
+  const text = slackText(records, { network: 'calibnet' }, 1, 5)
+  assert.match(text, /^\*calibnet\* · epochs 1 to 5 · 3 new\n/)
+  assert.match(text, /`setAdmittedLists` via sraOwner2 ok · stablecoins: 0xb3/)
+  assert.match(text, /`submitShares` REVERTED SetSharesFailed\(17\)/)
+  assert.match(text, /`could not be read` NOT READ/)
+  assert.doesNotMatch(text, /balance/)
+  assert.match(text, /solsticewatchtower\.eth\.limo\/$/)
+  assert.equal(slackText([records[0]], { network: 'calibnet' }, 1, 5), null) // nothing notable: no message
+  assert.match(slackText(records, { network: 'mainnet' }, 1, 5), /\?data=mainnet$/)
 })
