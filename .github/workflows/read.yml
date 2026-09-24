@@ -7,6 +7,11 @@ on:
     # drops runs when it is busy, and is busiest at the top of the hour. The reader catches up from its last epoch.
     - cron: '7,17,27,37,47,57 * * * *'
   workflow_dispatch: # also startable by hand from the Actions tab
+    inputs:
+      test_slack:
+        description: 'post one marked test line to Slack before reading'
+        type: boolean
+        default: false
 
 permissions:
   contents: write # to commit the record
@@ -26,6 +31,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - if: ${{ inputs.test_slack }}
+        run: node bin/slack-test.js
+        env: { SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }} }
       # SLACK_WEBHOOK (a repository secret, optional): the reader posts one Slack message per run that found something
       # new. Without the secret nothing is sent. Butterflynet opts out in its config.
       - run: node bin/reader.js config/calibnet.json
