@@ -258,7 +258,15 @@ Decisions (Irene, 2026-09-23):
    if the record itself must live on Filecoin; until then a daily snapshot of the record can be uploaded.
    Later improvement, same decision: a Goldsky subgraph for the SRA and SWA events, as the PDP explorer has,
    to shorten the delay for them. It cannot cover f02 (not a contract) or failed messages (no event).
-4. The alert: needs a named person and a channel.
+4. The alert, in its simplest form, built 2026-09-24 (Irene's ask, after the question how to follow the rehearsal
+   without polling): the job posts one Slack message per run that found something new on calibnet or mainnet
+   (events, messages with their result, gaps, queued write outcomes, claim checks; routine reads left out; at most
+   40 lines) to `#fil-upgrade-filplus`, through an Incoming WebHook created by TippyFlits (app `solstice-watchtower`,
+   Irene is app collaborator). The URL is the repository secret `SLACK_WEBHOOK`; without it nothing is sent; a
+   failed post never fails the run; butterflynet is opted out (`notify: false`). A manual start with `test_slack`
+   posts one marked test line (`bin/slack-test.js`). No judgment: people compare the lines with the rehearsal
+   plan's watchtower column and answer in the thread. Lesson from the same day: in a workflow file, `env` with
+   `${{ }}` must be in block form; the inline `{ }` form is invalid YAML and stopped the job for two minutes.
 5. A proper timer for the reader (decided 2026-09-21). GitHub starts the scheduled job only every 2 to 5 hours
    (measured 2026-09-18 to 2026-09-21). Stopgap for the PoC: an outside timer (cron-job.org) starts the job every
    15 minutes through the GitHub API, with a token limited to this repo and the Actions permission, held by
