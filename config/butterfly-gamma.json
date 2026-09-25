@@ -16,7 +16,6 @@
     "owner2": "0x831246Ec4A91eF36acA821068b95A9EF1765C514"
   },
   "wallets": {
-    "f099 (burn)": "0xff00000000000000000000000000000000000063",
     "initialOrchestrator": "0x48C7DC38e74C9fA9eA6484Ad6Ad0520349dC9B40"
   },
   "dataDir": "site/data/butterfly-gamma",

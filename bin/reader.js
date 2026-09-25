@@ -22,7 +22,8 @@ const LOG_CHUNK = 360
 const ZERO = '0x0000000000000000000000000000000000000000'
 // f02 state fields that change every epoch: left out of the record, so a 'f02 state' line means a real change. The four
 // FIP-0118 counters (TotalMintedReward, TotalBurnMinted, TotalExplicitMinted, Accrued) move with every block reward too;
-// they are readable live and the burn shows in the f099 balance.
+// they are readable live. The f099 (burn) balance was a per-run read until 2026-09-25; it moves every epoch, so it wrote
+// one line per run on every network and was dropped from the record (the page can read it live).
 const NOISY = ['Epoch', 'ThisEpochReward', 'TotalStoragePowerReward', 'ThisEpochRewardSmoothed', 'CumsumBaseline', 'CumsumRealized', 'EffectiveBaselinePower', 'ThisEpochBaselinePower', 'EffectiveNetworkTime',
   'TotalMintedReward', 'TotalBurnMinted', 'TotalExplicitMinted', 'Accrued']
 

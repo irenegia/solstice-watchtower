@@ -83,7 +83,7 @@ test('ComputeWeight clamps: the Q1 ramp from 5% to 10%', () => {
 test('byte helpers', () => {
   assert.equal(bigFromBytes(new Uint8Array()), 0n)
   assert.equal(bigFromBytes(Uint8Array.from([1, 1, 0])), -256n)
-  assert.equal(idToEthAddress(99), cfg.wallets['f099 (burn)'])
+  assert.equal(idToEthAddress(99), '0xff00000000000000000000000000000000000063') // f099, the burn actor
 })
 
 test('contract event: VolumePosted', () => {
@@ -162,6 +162,8 @@ test('slack text: one message per run, notable records only, reverted and gap ma
   assert.match(text, /`setAdmittedLists` via sraOwner2 ok · stablecoins: 0xb3/)
   assert.match(text, /`submitShares` REVERTED SetSharesFailed\(17\)/)
   assert.match(text, /`could not be read` NOT READ/)
+  const withTask = slackText([{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'Rejected', fields: { taskId: '0x80be01afc4be8ad0a50900713dc2b3117d811ab1af63dfa1b1926131f90bec6f', owner: '0x6c' } }], { network: 'calibnet' }, 1, 1)
+  assert.match(withTask, /taskId: 0x80be01af…, owner: 0x6c/) // the hash is cut in the Slack line only
   assert.doesNotMatch(text, /balance/)
   assert.match(text, /solsticewatchtower\.eth\.limo\/$/)
   assert.equal(slackText([records[0]], { network: 'calibnet' }, 1, 5), null) // nothing notable: no message

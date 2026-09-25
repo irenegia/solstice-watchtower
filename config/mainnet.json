@@ -17,7 +17,6 @@
     "swaOwner2": "0x4d6db5600c908b3C9b9888cFef43f27F38b203e9"
   },
   "wallets": {
-    "f099 (burn)": "0xff00000000000000000000000000000000000063",
     "initialOrchestrator": "0x97A90f5696be5E3C8d3752C92Adac287c2b4484e"
   },
   "dataDir": "site/data/mainnet",
