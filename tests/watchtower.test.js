@@ -164,6 +164,10 @@ test('slack text: one message per run, notable records only, reverted and gap ma
   assert.match(text, /`could not be read` NOT READ/)
   const withTask = slackText([{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'Rejected', fields: { taskId: '0x80be01afc4be8ad0a50900713dc2b3117d811ab1af63dfa1b1926131f90bec6f', owner: '0x6c' } }], { network: 'calibnet' }, 1, 1)
   assert.match(withTask, /taskId: 0x80be01af…, owner: 0x6c/) // the hash is cut in the Slack line only
+  const long = slackText([{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'AdmittedListsUpdated', fields: { stablecoins: ['0x' + 'b'.repeat(40), '0x' + 'e'.repeat(40)], filecoinPayContracts: ['0x' + '9'.repeat(40)] } }], { network: 'calibnet' }, 1, 1)
+  assert.match(long, /filecoinPayContracts: 0x9{40}\n/) // the third address is whole, not cut in the middle
+  const huge = slackText([{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'x', fields: { list: Array.from({ length: 30 }, (_, i) => '0x' + String(i).padStart(40, '0')) } }], { network: 'calibnet' }, 1, 1)
+  assert.match(huge, /0x0{38}\d\d …\n/) // a very long list is cut at a separator, never inside a value
   assert.doesNotMatch(text, /balance/)
   assert.match(text, /solsticewatchtower\.eth\.limo\/$/)
   assert.equal(slackText([records[0]], { network: 'calibnet' }, 1, 5), null) // nothing notable: no message
