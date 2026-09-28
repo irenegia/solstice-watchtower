@@ -21,6 +21,9 @@ export function bigFromBytes(bytes) {
 
 // Address bytes in ID form: protocol byte 00, then the LEB128 actor ID. Anything else stays raw hex.
 export function addressFromBytes(bytes, prefix = 'f') {
+  // A delegated address in the EVM namespace (protocol 4, namespace 10, an f410 address) carries a plain 20-byte
+  // Ethereum address: show that, as the rest of the page does. Other non-ID forms keep their raw bytes.
+  if (bytes[0] === 4 && bytes[1] === 10 && bytes.length === 22) return '0x' + hex(bytes.subarray(2)) + ' (f410)'
   if (bytes[0] !== 0) return '0x' + hex(bytes)
   let id = 0n
   let shift = 0n

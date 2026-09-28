@@ -145,6 +145,8 @@ test('parameters of messages sent to f02: Claim, SetShares, ReplaceAddress', () 
   assert.deepEqual(decodeF02Params('Claim', [2, [idAddress(1011), idAddress(1018)]], 't'), { streamId: 2, wallets: ['t01011', 't01018'] })
   assert.deepEqual(decodeF02Params('SetShares', [2, [[idAddress(1011), 10n ** 18n]]], 't'), { streamId: 2, shares: [{ recipient: 't01011', share: '1000000000000000000' }] })
   assert.deepEqual(decodeF02Params('ReplaceAddress', [2, idAddress(1018), idAddress(99)], 't'), { streamId: 2, oldAddress: 't01018', newAddress: 't099' })
+  const f410 = Uint8Array.from([4, 10, ...Buffer.from('97a90f5696be5e3c8d3752c92adac287c2b4484e', 'hex')]) // the wallet bytes of the calibnet Claim of 2026-09-28
+  assert.deepEqual(decodeF02Params('Claim', [2, [f410]], 't'), { streamId: 2, wallets: ['0x97a90f5696be5e3c8d3752c92adac287c2b4484e (f410)'] })
   const other = [1, 2]
   assert.equal(decodeF02Params('RemoveStream', other, 't'), other) // unknown shapes pass through
 })
