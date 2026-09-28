@@ -37,6 +37,7 @@
   .phases { list-style:none; margin:4px 0 0; padding:0; font-size:13px; } .phases li { margin:2px 0; }
   .dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
   .phases li.here { font-weight:600; }
+  table.params { margin-top:8px; font-size:13px; } table.params td { padding:3px 8px; } table.params td:first-child { white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -45,7 +46,7 @@
   <div id="views" class="views muted"></div>
   <div id="head" class="muted">loading…</div>
   <div id="banner"></div>
-  <details id="glance" open><summary>At a glance</summary><div id="glanceStreams" class="glance-row muted">streams: waiting for the live read…</div><div id="glanceQuarter"></div></details>
+  <details id="glance" open><summary>At a glance</summary><div id="glanceStreams" class="glance-row muted">streams: waiting for the live read…</div><div id="glanceQuarter"></div><div id="glanceParams"></div></details>
 
   <h2>1. Queued writes</h2>
   <div class="muted">Writes waiting in the f02 pending-write queue. Time left runs in your browser.</div>
@@ -163,6 +164,7 @@ async function main() {
   if (LIVE.includes(dataset) && ageMin > STALE_MINUTES) $('banner').innerHTML += `<div class="banner stopped">The reader has not run since ${utc(status.lastRun)} (${ageMin} minutes ago). The history below may be incomplete.</div>`
   glanceQuarter(status, records, nowEpoch, epochTime, quarterStart)
   glanceOrchestrators(records)
+  glanceParams(status, records, nowEpoch, epochTime, quarterStart)
   try { const g = $('glance'); if (localStorage.getItem('glance') === 'closed') g.open = false; g.ontoggle = () => { try { localStorage.setItem('glance', g.open ? 'open' : 'closed') } catch {} } } catch {}
   liveRead(status, nowEpoch, epochTime).catch((err) => { $('live').innerHTML = `<div class="banner stopped">Live read of f02 failed: ${esc(err.message)}. Parts 1 and 3 show recorded values only.</div>` })
 
@@ -328,6 +330,48 @@ function glanceQuarter(status, records, nowEpoch, epochTime, quarterStart) {
   $('glanceQuarter').innerHTML = `<div class="glance-row"><b>Quarter:</b> Q${Q} · ${phase}${inCut}</div>` +
     `<div class="bar">${segs}<div class="now" style="left:${pct(now - s)}" title="now, epoch ${now}"></div></div>` +
     `<ul class="phases">${phases.join('')}</ul><div class="muted" style="font-size:12px">Q${Q}: ${utc(epochTime(s))} to ${utc(epochTime(e))}${cutoff ? '' : ' · REGISTRATION_CUTOFF not set'}</div>`
+}
+
+// At a glance, part 3: the parameters in force. Governance parameters come from the SRA and SWA events of this record;
+// the admitted lists and the pricing parameters apply from the first epoch of the next quarter (FIP-0118 §2.2), so the
+// value in force in quarter Q is the last event before Start(Q), and a later one is shown as pending. GateParamsSet is
+// emitted when the change takes effect. The per-network constants come from deployments.json (via the config).
+// Token labels: synapse-sdk chains.ts / generated.ts and the Filecoin Pay explorer's payment-tokens.ts.
+const KNOWN = {
+  calibnet: { '0xb3042734b608a1b16e9e86b374a3f3e389b4cdf0': 'USDFC', '0xeb466342c4d449bc9f53a865d5cb90586f405215': 'axlUSDC mainnet address, no contract on calibnet', '0x09a0fdc2723fad1a7b8e3e00ee5df73841df55a0': 'Filecoin Pay' },
+  mainnet: { '0x80b98d3aa09ffff255c3ba4a241111ff1262f045': 'USDFC', '0xeb466342c4d449bc9f53a865d5cb90586f405215': 'axlUSDC', '0x23b1e018f08bb982348b15a86ee926eebf7f4daa': 'Filecoin Pay' },
+}
+function glanceParams(status, records, nowEpoch, epochTime, quarterStart) {
+  const now = nowEpoch(), A = status.activationEpoch, L = status.epochsPerQuarter, sec = status.epochSeconds
+  const active = A && now >= A, Q = active ? Math.floor((now - A) / L) + 1 : 0
+  const boundary = active ? quarterStart(Q) : Infinity // before activation every event applies from Q1
+  const label = (a) => { const k = (KNOWN[status.network] ?? {})[a.toLowerCase()]; return `<code>${a.slice(0, 6)}…${a.slice(-4)}</code>${k ? ' ' + k : ''}` }
+  const hours = (n) => { const h = n * sec / 3600, d = +(h / 24).toFixed(2); return h >= 24 ? `${d} ${d === 1 ? 'day' : 'days'}` : `${+h.toFixed(2)} h` }
+  const pick = (name) => { const ev = records.filter((r) => r.kind === 'event' && r.name === name); return { cur: ev.filter((r) => r.epoch < boundary).at(-1), next: ev.filter((r) => r.epoch >= boundary).at(-1) } }
+  const since = (r, fromNext) => !r ? '' : active ? (fromNext ? `pending: applies from ${utc(epochTime(quarterStart(Q + 1)))}` : `since ${utc(r.time)}`) : `set ${utc(r.time)}, applies from Q1`
+  const rows = []
+  const row = (name, value, when) => rows.push(`<tr><td>${name}</td><td>${value}</td><td class="muted">${when}</td></tr>`)
+  const lists = pick('AdmittedListsUpdated'), price = pick('PricingParamsUpdated'), gate = records.filter((r) => r.kind === 'event' && r.name === 'GateParamsSet').at(-1)
+  for (const [which, key] of [['cur', false], ['next', true]]) {
+    const l = lists[which], p = price[which]
+    if (l) { row('Admitted stablecoins', l.fields.stablecoins.map(label).join('<br>'), since(l, key)); row('Admitted Filecoin Pay contracts', l.fields.filecoinPayContracts.map(label).join('<br>'), since(l, key)) }
+    if (p) {
+      const f = p.fields
+      row('MIN_LOT_FLOOR', scaled(f.minLotFloor, E18, 2) + ' USD', since(p, key))
+      row('MIN_LOT_ALPHA', `${f.minLotAlphaNum}/${f.minLotAlphaDen}`, since(p, key))
+      row('PRICE_BAND', `${f.priceBand} basis points = ${Number(f.priceBand) / 100}%`, since(p, key))
+      row('REGISTRATION_CUTOFF', `${f.registrationCutoff} epochs = ${hours(Number(f.registrationCutoff))}`, since(p, key))
+    }
+  }
+  if (!lists.cur && !lists.next) row('Admitted lists', 'none set', '')
+  if (!price.cur && !price.next) row('Pricing parameters', 'none set', '')
+  if (gate) { const g = gate.fields.params; row('Gate parameters', `target.base ${scaled(g.target.base, E18, 2)} USD · target.stepRatio ${scaled(g.target.stepRatio, E18, 2)} · steps ${g.steps}`, `since ${utc(gate.time)}`) }
+  else row('Gate parameters', 'as set at deployment (no GateParamsSet event yet)', '')
+  row('EPOCHS_PER_QUARTER', `${L} = ${hours(L)}`, 'deployments.json')
+  if (status.postPeriod) row('POST_PERIOD', `${status.postPeriod} epochs = ${hours(status.postPeriod)}`, 'deployments.json')
+  if (status.verificationWindow) row('VERIFICATION_WINDOW', `${status.verificationWindow} epochs = ${hours(status.verificationWindow)}`, 'deployments.json')
+  if (status.swaTimelockEpochs) row('SWA_TIMELOCK', `${status.swaTimelockEpochs} epochs = ${hours(status.swaTimelockEpochs)}`, 'f02 state (Lotus params)')
+  $('glanceParams').innerHTML = `<details class="row"><summary><b>Parameters in force</b></summary><div class="scroll"><table class="params">${rows.join('')}</table></div></details>`
 }
 
 // Footnote: the SRA counts quarters from its activationEpoch (deployments.json); f02's ramp starts at stream 1's t_start,
