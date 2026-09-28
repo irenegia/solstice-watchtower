@@ -25,7 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20 # two networks; butterfly took about 5 minutes per 720 epochs on 2026-09-18
     steps:
+      # ref: main, not the commit that triggered the run: a run that waited in the concurrency queue must start from the
+      # previous run's push, or its own push is refused (seen 2026-09-28 00:30 UTC, two runs started at the same moment).
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
