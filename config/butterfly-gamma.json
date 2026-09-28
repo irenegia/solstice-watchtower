@@ -20,5 +20,7 @@
   },
   "dataDir": "site/data/butterfly-gamma",
   "startEpoch": 10,
-  "notify": false
+  "notify": false,
+  "postPeriod": 120,
+  "verificationWindow": 40
 }

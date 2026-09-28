@@ -27,6 +27,16 @@
   .net { display:inline-block; padding:2px 10px; border-radius:6px; background:var(--net); color:#fff; font-weight:700; }
   .views { margin:6px 0 0; } .views a.here { font-weight:700; text-decoration:none; color:var(--fg); }
   footer { margin-top:48px; padding-top:12px; border-top:1px solid var(--line); font-size:13px; }
+  details#glance { margin:14px 0 4px; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:8px 12px; }
+  details#glance > summary { cursor:pointer; font-weight:600; }
+  .glance-row { margin:8px 0 2px; font-size:14px; } .glance-row b { font-weight:600; }
+  .bar { position:relative; display:flex; height:22px; margin:6px 0 2px; border-radius:4px; overflow:hidden; font-size:11px; }
+  .bar > div { display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden; color:#fff; }
+  .seg-post { background:#6d5bd0; } .seg-verify { background:#b0713a; } .seg-bound { background:#2f7d57; } .seg-cut { background:#8a8a84; } .seg-none { background:var(--line); color:var(--fg) !important; }
+  .now { position:absolute; top:-3px; bottom:-3px; width:3px; background:var(--fg); }
+  .phases { list-style:none; margin:4px 0 0; padding:0; font-size:13px; } .phases li { margin:2px 0; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  .phases li.here { font-weight:600; }
 </style>
 </head>
 <body>
@@ -35,6 +45,7 @@
   <div id="views" class="views muted"></div>
   <div id="head" class="muted">loading…</div>
   <div id="banner"></div>
+  <details id="glance" open><summary>At a glance</summary><div id="glanceStreams" class="glance-row muted">streams: waiting for the live read…</div><div id="glanceQuarter"></div></details>
 
   <h2>1. Queued writes</h2>
   <div class="muted">Writes waiting in the f02 pending-write queue. Time left runs in your browser.</div>
@@ -150,6 +161,9 @@ async function main() {
   // Rule: a reader that stopped must be visible. The live read below does not depend on the reader.
   const ageMin = Math.round((Date.now() - new Date(status.lastRun)) / 60000)
   if (LIVE.includes(dataset) && ageMin > STALE_MINUTES) $('banner').innerHTML += `<div class="banner stopped">The reader has not run since ${utc(status.lastRun)} (${ageMin} minutes ago). The history below may be incomplete.</div>`
+  glanceQuarter(status, records, nowEpoch, epochTime, quarterStart)
+  glanceOrchestrators(records)
+  try { const g = $('glance'); if (localStorage.getItem('glance') === 'closed') g.open = false; g.ontoggle = () => { try { localStorage.setItem('glance', g.open ? 'open' : 'closed') } catch {} } } catch {}
   liveRead(status, nowEpoch, epochTime).catch((err) => { $('live').innerHTML = `<div class="banner stopped">Live read of f02 failed: ${esc(err.message)}. Parts 1 and 3 show recorded values only.</div>` })
 
   // 1. queued writes: from the f02 state when the reader has it, and rebuilt from events as a cross-check
@@ -242,6 +256,7 @@ async function liveRead(status, nowEpoch, epochTime) {
   const recorded = records0.filter((r) => r.name === 'f02 streams' && !r.fields.error).at(-1)
   const differs = recorded && JSON.stringify(recorded.fields.pendingWrites.map(slot).sort()) !== JSON.stringify(live.pendingWrites.map(slot).sort())
   footnote(live, status)
+  glanceStreams(live, nowEpoch)
   $('live').innerHTML = `<p><b>Live:</b> ${at}. ${live.pendingWrites.length} queued write(s).` +
     (differs ? ` <span class="bad">This differs from the recorded queue of ${utc(recorded.time)}.</span> The recorded one is older; if the difference stays after the next reader run, check both.` : '') + '</p>' +
     (live.pendingWrites.length ? `<div class="scroll"><table><tr><th>op</th><th>stream-id</th><th>effective epoch</th><th>time left</th><th>payload</th></tr>` +
@@ -251,6 +266,69 @@ async function liveRead(status, nowEpoch, epochTime) {
     `<p class="muted">Weights now: ${live.streams.map((st) => `stream ${st.id} ${scaled(weightNow(st.weight, nowEpoch()), 10n ** 16n, 2)}%`).join(' · ')}</p>`
 }
 let records0 = []
+
+// At a glance, row 1: streams and weights (live f02 read), Orchestrators and their registered pairs (replayed from the
+// SRA events of this record: admitted minus removed; pairs declared or reassigned minus cancelled, counted per
+// Orchestrator that is still admitted).
+let glanceOrch = ''
+function glanceOrchestrators(records) {
+  const admitted = new Set(), pairOf = new Map()
+  for (const r of records) {
+    if (r.kind !== 'event' || r.source !== 'SRA') continue
+    const f = r.fields
+    if (r.name === 'OrchestratorAdmitted') admitted.add(f.orch)
+    if (r.name === 'OrchestratorRemoved') admitted.delete(f.orch)
+    if (r.name === 'BindingDeclared' || r.name === 'BindingReassigned') pairOf.set(`${f.payer}|${f.operator}`, f.orchestrator)
+    if (r.name === 'BindingCanceled') pairOf.delete(`${f.payer}|${f.operator}`)
+  }
+  const short = (a) => a.slice(0, 6) + '…' + a.slice(-4)
+  const counts = [...admitted].map((o) => { const n = [...pairOf.values()].filter((x) => x === o).length; return `${short(o)}: ${n} ${n === 1 ? 'pair' : 'pairs'}` })
+  glanceOrch = `<b>Orchestrators:</b> ${admitted.size}${counts.length ? ' · ' + counts.join(' · ') : ''}`
+  if (!$('glanceStreams').dataset.live) $('glanceStreams').innerHTML = glanceOrch
+}
+function glanceStreams(live, nowEpoch) {
+  const kinds = live.streams.map((st) => `stream ${st.id}${st.distribution ? ' (service)' : ' (consensus)'} ${scaled(weightNow(st.weight, nowEpoch()), 10n ** 16n, 2)}%`)
+  $('glanceStreams').dataset.live = '1'
+  $('glanceStreams').innerHTML = `<b>Streams:</b> ${live.streams.length} · ${kinds.join(' · ')}<br>${glanceOrch}`
+}
+
+// At a glance, row 2: where the chain is in the current quarter Q. The cycle of quarter Q-1 runs inside quarter Q
+// (SRA: "Quarter anchor E = FIP-0118 Start(q+1), where quarter q's cycle opens"): POST_PERIOD, then VERIFICATION_WINDOW,
+// then the value binds and SubmitShares and the gate check can run. The last REGISTRATION_CUTOFF epochs before
+// Start(Q+1) are marked: a pair registered there applies only from Start(Q+1) and covers nothing of quarter Q. The cutoff in force is the last
+// PricingParamsUpdated before Start(Q) (a parameter applies from the next quarter's first epoch).
+function glanceQuarter(status, records, nowEpoch, epochTime, quarterStart) {
+  const now = nowEpoch(), A = status.activationEpoch, L = status.epochsPerQuarter
+  if (!A || now < A) { $('glanceQuarter').innerHTML = `<div class="glance-row"><b>Quarter:</b> before activation (activation epoch ${A || 'not chosen'})</div>`; return }
+  const Q = Math.floor((now - A) / L) + 1, s = quarterStart(Q), e = quarterStart(Q + 1)
+  const P = status.postPeriod, V = status.verificationWindow
+  const priced = records.filter((r) => r.kind === 'event' && r.name === 'PricingParamsUpdated' && r.epoch < s).at(-1)
+  const cutoff = priced ? Number(priced.fields.registrationCutoff) : 0
+  const pct = (x) => (100 * x / L).toFixed(2) + '%'
+  // The bar carries only colours; the phase list under it gives each phase with its times (readable on a phone).
+  const seg = (cls, len, label) => len > 0 ? `<div class="${cls}" style="width:${pct(len)}" title="${label}"></div>` : ''
+  const hhmm = (x) => utc(epochTime(x)).slice(11, 16)
+  const phases = []
+  const phaseRow = (cls, from, to, label) => phases.push(`<li class="${now >= from && now < to ? 'here' : ''}"><span class="dot ${cls}"></span>${hhmm(from)} to ${hhmm(to)} UTC · ${label}${now >= from && now < to ? ' (now)' : ''}</li>`)
+  let segs
+  if (Q === 1) { segs = seg('seg-none', L - cutoff, 'no cycle in Q1'); phaseRow('seg-none', s, e - cutoff, 'no posting cycle in Q1 (Q1 posts in Q2)') }
+  else if (!P || !V) { segs = seg('seg-none', L - cutoff, `cycle of Q${Q - 1}`); phaseRow('seg-none', s, e - cutoff, `cycle of Q${Q - 1} (windows known after the next reader run)`) }
+  else {
+    segs = seg('seg-post', P, `POST_PERIOD Q${Q - 1}`) + seg('seg-verify', V, `VERIFICATION_WINDOW Q${Q - 1}`) + seg('seg-bound', L - P - V - cutoff, `Q${Q - 1} bound`)
+    phaseRow('seg-post', s, s + P, `POST_PERIOD for Q${Q - 1}`)
+    phaseRow('seg-verify', s + P, s + P + V, `VERIFICATION_WINDOW for Q${Q - 1}`)
+    phaseRow('seg-bound', s + P + V, e - cutoff, `Q${Q - 1} bound: SubmitShares and gate check`)
+  }
+  segs += seg('seg-cut', cutoff, 'REGISTRATION_CUTOFF')
+  if (cutoff) phaseRow('seg-cut', e - cutoff, e, `REGISTRATION_CUTOFF (${cutoff} epochs): a pair registered here applies from Q${Q + 1}`)
+  const phase = Q === 1 ? 'bootstrap, no posting cycle' : !P || !V ? '' : now < s + P ? `POST_PERIOD for Q${Q - 1} until ${utc(epochTime(s + P))}` : now < s + P + V ? `VERIFICATION_WINDOW for Q${Q - 1} until ${utc(epochTime(s + P + V))}` : `Q${Q - 1} bound at ${utc(epochTime(s + P + V))}: SubmitShares and gate check open`
+  // FIP-0118 §2.2: a registration applies from its execution epoch (back-cover to the quarter's first epoch); one made in
+  // [Start(Q+1) - REGISTRATION_CUTOFF, Start(Q+1)) applies from Start(Q+1) and covers nothing of quarter Q.
+  const inCut = cutoff && now >= e - cutoff ? ` · inside REGISTRATION_CUTOFF: a pair registered now applies from ${utc(epochTime(e))} and covers nothing of Q${Q}` : ''
+  $('glanceQuarter').innerHTML = `<div class="glance-row"><b>Quarter:</b> Q${Q} · ${phase}${inCut}</div>` +
+    `<div class="bar">${segs}<div class="now" style="left:${pct(now - s)}" title="now, epoch ${now}"></div></div>` +
+    `<ul class="phases">${phases.join('')}</ul><div class="muted" style="font-size:12px">Q${Q}: ${utc(epochTime(s))} to ${utc(epochTime(e))}${cutoff ? '' : ' · REGISTRATION_CUTOFF not set'}</div>`
+}
 
 // Footnote: the SRA counts quarters from its activationEpoch (deployments.json); f02's ramp starts at stream 1's t_start,
 // set by the migration to the upgrade epoch + 1. FIP-0118 §2.4.10 expects them equal. A one-epoch difference changes
