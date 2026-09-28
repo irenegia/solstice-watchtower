@@ -23,5 +23,7 @@
   "startEpoch": 4092521,
   "source": "solstice deployments.json on main at 0006edc (PR #83 'deploy v1', 2026-09-22, chain 314159): the contracts were REDEPLOYED at new addresses; activationEpoch 4109134 = Mon 2026-09-28 13:00 UTC (Lotus UpgradeSolsticeHeight 4109133, PR lotus #13809). startEpoch is three epochs before the new SRA deployment block 4092524 (Upgraded event, tx 0x20ed9f5b...); the SWA followed at 4092528. The record of the 2026-09-17 deployment (SRA 0xeDfC..., SWA 0xDE4f..., activation 4094734) is frozen in site/data/calibnet-2026-09-17/.",
   "postPeriod": 240,
-  "verificationWindow": 480
+  "verificationWindow": 480,
+  "distributionRpcUrl": "http://lotus.va.gg:2235/rpc/v2",
+  "distributionNote": "rvagg's calibnet Lotus node with Filecoin.StateRewardDistribution (Slack 2026-09-28); optional cross-check, not a public service"
 }

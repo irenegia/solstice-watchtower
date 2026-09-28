@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import * as dagCbor from '@ipld/dag-cbor'
 import { encodeFunctionData, decodeFunctionResult } from 'viem'
 import { makeRpc, toHex, epochToTime, quarterOf } from '../lib/chain.js'
-import { decodeActorEvent, decodeStreamsState, decodeF02Params, idToEthAddress, slotOf, writeOutcome } from '../site/lib/f02.js'
+import { decodeActorEvent, decodeStreamsState, decodeF02Params, idToEthAddress, slotOf, writeOutcome, computeWeight } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert, plain } from '../lib/evm.js'
 import { notify } from '../lib/notify.js'
 
@@ -157,6 +157,40 @@ function plainCbor(v) {
   return v instanceof Uint8Array ? '0x' + Buffer.from(v).toString('hex') : typeof v === 'bigint' ? v.toString() : Array.isArray(v) ? v.map(plainCbor) : v
 }
 
+// Cross-check with rvagg's Lotus node, which serves Filecoin.StateRewardDistribution (the f02 split of one tipset's
+// reward, after due writes). Optional: that node is not a public service, so a failed call is only logged. The weights
+// the watchtower computes from the stored records and the share map it decodes must equal the node's; a difference is
+// recorded as "distribution check" (nothing is recorded when they agree). The node's burn share of the minted reward is
+// recorded as a read, rounded to 0.01%, so it writes a line only when the split really moves (a removal, a new stream).
+async function distributionCheck(state) {
+  let d
+  try {
+    d = await makeRpc(cfg.distributionRpcUrl)('Filecoin.StateRewardDistribution', [{ tag: 'latest' }])
+  } catch (err) {
+    console.log(`distribution check skipped: ${err.message.slice(0, 120)}`)
+    return
+  }
+  const block = d.Blocks?.[0]
+  if (!block) return
+  const diffs = []
+  for (const st of block.Streams) {
+    const ours = state.streams.find((x) => x.id === Number(st.ID))
+    if (!ours) { diffs.push(`stream ${st.ID}: in the node, not in the f02 state read`); continue }
+    const w = computeWeight(ours.weight, d.Height).toString()
+    if (w !== st.Weight) diffs.push(`stream ${st.ID} weight: watchtower ${w}, node ${st.Weight}`)
+    const nodeShares = (st.Distribution?.Recipients ?? []).map((r) => `${r.Recipient}:${r.Share}`).sort().join(',')
+    const ourShares = (ours.distribution?.shares ?? []).map((r) => `${r.recipient}:${r.share}`).sort().join(',')
+    if (nodeShares !== ourShares) diffs.push(`stream ${st.ID} share map: watchtower [${ourShares}], node [${nodeShares}]`)
+  }
+  for (const ours of state.streams) if (!block.Streams.some((st) => Number(st.ID) === ours.id)) diffs.push(`stream ${ours.id}: in the f02 state read, not in the node`)
+  if (diffs.length) rec('read', d.Height, 'f02', 'distribution check', { height: d.Height, matches: false, differences: diffs })
+  const t = d.Totals
+  if (t && BigInt(t.MintedReward) > 0n) {
+    const burnBps = (BigInt(t.BurnAllocation) * 10000n / BigInt(t.MintedReward)).toString()
+    await read('f02', 'burn share of the block reward (node)', async () => ({ basisPoints: burnBps, note: 'BurnAllocation / MintedReward, from Filecoin.StateRewardDistribution' }))
+  }
+}
+
 // Rule: a gap that cannot be read is recorded, not hidden. Consecutive epochs become one record.
 for (let i = 0; i < unreadable.length; ) {
   let j = i
@@ -221,7 +255,7 @@ async function view(address, functionName, args = []) {
   }
 }
 
-let streamsRoot
+let streamsRoot, headStreams
 await read('f02', 'f02 state', async () => {
   const { State } = await rpc('Filecoin.StateReadState', [cfg.f02, null])
   streamsRoot = Object.values(State).find((v) => v && typeof v === 'object' && '/' in v)?.['/'] // the one CID in the state
@@ -231,9 +265,11 @@ if (streamsRoot) {
   await read('f02', 'f02 streams', async () => {
     const state = decodeStreamsState(Buffer.from(await rpc('Filecoin.ChainReadObj', [{ '/': streamsRoot }]), 'base64'), cfg.addressPrefix)
     state.pendingWrites.forEach(watchWrite) // the queue in the state is the second source of queued writes, next to the events
+    headStreams = state
     return state
   })
 }
+if (headStreams && cfg.distributionRpcUrl) await distributionCheck(headStreams)
 
 // 5. outcome of every queued write, read at its effective epoch. f02 writes no visible event when a due write takes
 // effect or is dropped inside a block reward (FIP-0118 §2.4.9), so the state is the only evidence. A write with

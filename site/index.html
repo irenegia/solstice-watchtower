@@ -265,8 +265,7 @@ async function liveRead(status, nowEpoch, epochTime) {
     (live.pendingWrites.length ? `<div class="scroll"><table><tr><th>op</th><th>stream-id</th><th>effective epoch</th><th>time left</th><th>payload</th></tr>` +
       live.pendingWrites.map((w) => `<tr><td>${esc(w.op)}${w.cancellable ? '' : '<br><span class="muted">cannot be cancelled</span>'}</td><td>${w.streamId ?? '<span class="muted">schedule-wide</span>'}</td>
         <td class="nowrap">${w.effectiveEpoch}<br><span class="muted">${utc(epochTime(w.effectiveEpoch))}</span></td><td class="nowrap" data-effective="${w.effectiveEpoch}">${timeLeft(w.effectiveEpoch - nowEpoch(), status.epochSeconds)}</td>
-        <td><details class="row"><summary>${summary(w.payload)}</summary><pre>${esc(JSON.stringify(w.payload, null, 2))}</pre></details></td></tr>`).join('') + '</table></div>' : '') +
-    `<p class="muted">Weights now: ${live.streams.map((st) => `stream ${st.id} ${scaled(weightNow(st.weight, nowEpoch()), 10n ** 16n, 2)}%`).join(' · ')}</p>`
+        <td><details class="row"><summary>${summary(w.payload)}</summary><pre>${esc(JSON.stringify(w.payload, null, 2))}</pre></details></td></tr>`).join('') + '</table></div>' : '') // weights now: in the At a glance block
 }
 let records0 = []
 
