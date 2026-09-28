@@ -66,7 +66,7 @@
   <h2>3. State</h2>
   <div class="muted">Values that leave no event. Each line shows the last value read and when it last changed.</div>
   <div id="state"></div>
-  <footer id="foot" class="muted"></footer>
+  <footer class="muted"><div id="netnote"></div><div id="foot"></div></footer>
 </main>
 
 <script type="importmap">{ "imports": { "@ipld/dag-cbor": "https://cdn.jsdelivr.net/npm/@ipld/dag-cbor@9.2.0/+esm" } }</script>
@@ -157,7 +157,8 @@ async function main() {
     Object.entries(VIEWS).map(([k, v]) => k === dataset ? `<a class="here">${v}</a>` : `<a href="${k === 'calibnet' ? '?' : `?data=${k}`}">${v}</a>`).join(' | ')
   $('head').innerHTML = `last epoch read ${status.lastEpoch} (${utc(epochTime(status.lastEpoch))}) · ` +
     (quarterNow ? `quarter ${quarterNow} now` : 'before activation') + ` · <a href="${dir}records.jsonl">record file</a>`
-  if (NOTES[dataset]) $('banner').innerHTML = `<div class="banner">${esc(NOTES[dataset])}</div>`
+  // The network note is background, not a warning: it sits in the footer. Only warnings (the stopped reader) go on top.
+  if (NOTES[dataset]) $('netnote').innerHTML = `<p><b>About this network.</b> ${esc(NOTES[dataset])}</p>`
   $('head').innerHTML += ` · record from ${from}`
   // Rule: a reader that stopped must be visible. The live read below does not depend on the reader.
   const ageMin = Math.round((Date.now() - new Date(status.lastRun)) / 60000)
@@ -309,7 +310,8 @@ function glanceQuarter(status, records, nowEpoch, epochTime, quarterStart) {
   const pct = (x) => (100 * x / L).toFixed(2) + '%'
   // The bar carries only colours; the phase list under it gives each phase with its times (readable on a phone).
   const seg = (cls, len, label) => len > 0 ? `<div class="${cls}" style="width:${pct(len)}" title="${label}"></div>` : ''
-  const hhmm = (x) => utc(epochTime(x)).slice(11, 16)
+  // Quarters of a day or more cross midnight: then each time carries its day ("Mon 28 13:00").
+  const hhmm = (x) => { const d = new Date(epochTime(x)); const t = d.toISOString().slice(11, 16); return L * status.epochSeconds >= 86400 ? `${d.toUTCString().slice(0, 3)} ${d.getUTCDate()} ${t}` : t }
   const phases = []
   const phaseRow = (cls, from, to, label) => phases.push(`<li class="${now >= from && now < to ? 'here' : ''}"><span class="dot ${cls}"></span>${hhmm(from)} to ${hhmm(to)} UTC · ${label}${now >= from && now < to ? ' (now)' : ''}</li>`)
   let segs
