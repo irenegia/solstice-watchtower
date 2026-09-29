@@ -174,4 +174,7 @@ test('slack text: one message per run, notable records only, reverted and gap ma
   assert.match(text, /solsticewatchtower\.eth\.limo\/$/)
   assert.equal(slackText([records[0]], { network: 'calibnet' }, 1, 5), null) // nothing notable: no message
   assert.match(slackText(records, { network: 'mainnet' }, 1, 5), /\?data=mainnet$/)
+  const withTx = [{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'VolumePosted', fields: { q: 1 }, tx: '0xabc' }]
+  assert.match(slackText(withTx, { network: 'calibnet' }, 1, 1), /<https:\/\/calibration\.filfox\.info\/en\/message\/0xabc\|message>/)
+  assert.doesNotMatch(slackText(withTx, { network: 'butterfly-gamma' }, 1, 1), /filfox/) // no explorer on butterflynet
 })
