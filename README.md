@@ -16,7 +16,10 @@ Reads what landed on chain in f02, the SWA and the SRA (FIP-0118) and shows it o
 
   | Published | Link | Views |
   |---|---|---|
-  | 2026-09-23 | https://inbrowser.link/ipfs/bafybeihrtha7j3z65six4cos4ozvhi35ijiir6o4s75zengtqji5ur4ftq/ | calibnet (first deployment, 2026-09-17), butterfly gamma, butterfly alpha |
+  | 2026-09-28 (afternoon) | https://inbrowser.link/ipfs/bafybeicy5n4zdzhnycdjktlscdxxapziqdhkvq5fyuzhztwcxpxgivya5u/ | calibnet, mainnet, butterfly gamma, with the "At a glance" block |
+  | 2026-09-28 (morning) | https://inbrowser.link/ipfs/bafybeicjzly5sefxz7nyhhregr3yqfojvqusaukfvegmeqz3tc5iu527nu/ | the same |
+  | 2026-09-23 (second) | https://inbrowser.link/ipfs/bafybeiemqoau7laiv2dsd62oud5ir5ufzapa2gm3g3rbfgbots43traeti/ | calibnet, mainnet, butterfly gamma |
+  | 2026-09-23 (first) | https://inbrowser.link/ipfs/bafybeihrtha7j3z65six4cos4ozvhi35ijiir6o4s75zengtqji5ur4ftq/ | calibnet (first deployment, 2026-09-17), butterfly gamma, butterfly alpha |
   | 2026-09-20 | https://inbrowser.link/ipfs/bafybeihk4odsbmor5dbsjtt5uk4d3yl6z4hi3nadjqtzdpqrqlp25uylye/ | the same, plus the sample and real-test views |
   | 2026-09-18 | https://inbrowser.link/ipfs/bafybeiaalkk7ullf4rrllipm3wuvry7ebv7yuzwmecmplz4iqap2th5edi/ | calibnet (first deployment), sample, real test |
 
