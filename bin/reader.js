@@ -38,7 +38,8 @@ status.pending ??= {}
 
 // address -> name, lower case. A contract still at the zero address is not deployed yet and is skipped.
 const contracts = new Map([['SRA', cfg.sra], ['SWA', cfg.swa]].filter(([, a]) => a !== ZERO).map(([n, a]) => [a.toLowerCase(), n]))
-const owners = new Map(Object.entries(cfg.owners).map(([n, a]) => [a.toLowerCase(), n]))
+// address -> label, for the "via" of a message sent through a known multisig
+const names = new Map(Object.entries({ ...cfg.owners, ...cfg.wallets }).map(([n, a]) => [a.toLowerCase(), n]))
 
 const chainHead = Number(await rpc('eth_blockNumber'))
 const from = status.lastEpoch === null ? (cfg.startEpoch ?? chainHead - LAG - 20) : status.lastEpoch + 1
@@ -94,7 +95,8 @@ if (contracts.size) {
     rec('event', Number(log.blockNumber), contracts.get(log.address.toLowerCase()), name, fields, { tx: log.transactionHash, raw: { topics: log.topics, data: log.data } })
   }
 
-  // 3. messages to the SRA, the SWA or one of their owner multisigs, with their result
+  // 3. messages to the SRA or the SWA, direct or through any Safe, with their result. Until 2026-09-30 only the four
+  // owner Safes were followed, so failed calls through an Orchestrator's Safe were invisible (they leave no event).
   for (let epoch = from; epoch <= to; epoch++) {
     let block
     try {
@@ -106,18 +108,21 @@ if (contracts.size) {
     }
     for (const tx of block?.transactions ?? []) {
       const sentTo = tx.to?.toLowerCase()
-      if (!contracts.has(sentTo) && !owners.has(sentTo)) continue
-      const call = decodeCall(tx.input)
+      const call = decodeCall(tx.input ?? '0x')
       const target = call.innerTo ?? sentTo
-      if (!contracts.has(target)) continue // a multisig doing something unrelated
+      if (!contracts.has(target)) continue // not a call to the SRA or the SWA
       const receipt = await rpc('eth_getTransactionReceipt', [tx.hash])
       // a Safe message can succeed while the call inside it fails: the Safe then emits ExecutionFailure
       const innerFailed = receipt.logs.some((l) => decodeLog(l).name === 'ExecutionFailure')
       const ok = receipt.status === '0x1' && !innerFailed
+      // Out of gas (all gas used): the chain keeps no reason. A replay with enough gas shows whether the call would
+      // have failed anyway (all five seen on 2026-09-29 would have).
+      const outOfGas = !ok && BigInt(receipt.gasUsed) === BigInt(tx.gas)
+      const replay = () => call.innerTo ? replayReason(sentTo, target, call.innerData, call.innerValue, epoch) : replayReason(tx.from, target, tx.input, tx.value, epoch)
       // A direct call: the chain keeps its revert reason in the receipt. A call sent through a multisig: the
       // receipt holds the multisig's own result, so the reason of the call inside it needs a replay.
-      const error = ok ? undefined : call.innerTo ? await replayReason(sentTo, target, call.innerData, call.innerValue, epoch) : await receiptReason(tx.hash)
-      rec('message', epoch, contracts.get(target), call.name, call.fields, { from: tx.from, via: owners.get(sentTo), ok, error, tx: tx.hash, raw: { input: tx.input } })
+      const error = ok ? undefined : outOfGas ? `out of gas (gas limit ${BigInt(tx.gas)}); ${await replay()}` : call.innerTo ? await replay() : await receiptReason(tx.hash)
+      rec('message', epoch, contracts.get(target), call.name, call.fields, { from: tx.from, via: call.innerTo ? names.get(sentTo) ?? sentTo : undefined, ok, error, tx: tx.hash, raw: { input: tx.input } })
     }
   }
 }
@@ -214,7 +219,7 @@ async function replayReason(sender, target, data, value, epoch) {
     await rpc('eth_call', [{ from: sender, to: target, data, value: toHex(value ?? 0) }, toHex(epoch - 1)])
     return 'replay did not revert'
   } catch (err) {
-    return `${decodeRevert(err.rpc?.data)} (from a replay of the inner call)`
+    return `${decodeRevert(err.rpc?.data)} (from a replay)`
   }
 }
 

@@ -55,11 +55,11 @@
   <div id="queue"></div>
 
   <h2>2. What landed</h2>
-  <div class="muted">Result: for a message, <b>ok</b> or <b>reverted</b> with the reason; for a claim check, whether the wallet balance moved by the event's amount;
+  <div class="muted">Result: for a message, <b>ok</b> or <b>failed</b> with the reason (reverted by the contract, out of gas, or the call inside a Safe failed); for a claim check, whether the wallet balance moved by the event's amount;
     for a gap (epochs the reader could not read from the node), <b>not read</b>. Events have no result of their own: the result is on the message that emitted them.</div>
   <div class="filters">
     <label>Source <select id="fSource"><option value="">all</option><option>f02</option><option>SRA</option><option>SWA</option></select></label>
-    <label><input type="checkbox" id="fBad"> only reverted messages</label>
+    <label><input type="checkbox" id="fBad"> only failed messages</label>
   </div>
   <div id="landed"></div>
 
@@ -204,7 +204,7 @@ async function main() {
         <td class="nowrap">${esc(r.source)}<br><span class="muted">${r.kind}</span></td>
         <td><details class="row"><summary><b>${esc(r.name)}</b> ${summary(r.fields)}</summary><pre>${esc(JSON.stringify(r, null, 2))}</pre></details>
           ${r.from ? `<span class="muted">from ${esc(r.from)}${r.via ? ` via ${esc(r.via)}` : ''}</span>` : ''}</td>
-        <td class="result">${r.kind === 'message' ? (r.ok ? '<span class="ok">ok</span>' : `<span class="bad">reverted</span><br>${esc(r.error ?? '')}`) : r.name === 'claim check' ? (r.fields.matches ? '<span class="ok">matches</span>' : '<span class="bad">does not match</span>') : r.kind === 'gap' ? '<span class="bad">not read</span>' : '<span class="muted">–</span>'}</td>
+        <td class="result">${r.kind === 'message' ? (r.ok ? '<span class="ok">ok</span>' : `<span class="bad">failed</span><br>${esc(r.error ?? '')}`) : r.name === 'claim check' ? (r.fields.matches ? '<span class="ok">matches</span>' : '<span class="bad">does not match</span>') : r.kind === 'gap' ? '<span class="bad">not read</span>' : '<span class="muted">–</span>'}</td>
         <td class="nowrap">${r.tx ? `<a href="${msgLink(r.tx)}">message</a>` : r.msgCid ? `<a href="${msgLink(r.msgCid)}">message</a>` : ''}</td></tr>`
   function renderLanded() {
     const source = $('fSource').value, onlyBad = $('fBad').checked

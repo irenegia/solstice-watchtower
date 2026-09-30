@@ -23,10 +23,12 @@ One run:
 2. For the new epochs it fetches
    - the f02 actor events (`Filecoin.GetActorEventsRaw`),
    - the SRA and SWA logs (`eth_getLogs`),
-   - every message sent to the SRA, the SWA or one of their owner multisigs, with its result. A reverted
+   - every message to the SRA or the SWA, sent directly or through any Safe, with its result (until
+     2026-09-30 only the four owner Safes were followed). A reverted
      message emits no event (FIP-0118 §2.4.9: "Reverted calls emit no event"), so messages are found by
      reading every block. The revert reason comes from the on-chain receipt; only the inner call of a multisig
-     message is replayed. Messages sent to f02 itself are read too, from the activation epoch on.
+     message is replayed. A message that used all its gas is recorded as "out of gas" plus the replay's reason.
+     Messages sent to f02 itself are read too, from the activation epoch on.
 3. At the chain head it does the reads: f02 state, the state behind `streams_root`, wallet balances, SRA views.
    For every `claim-payout` event it also reads the recipient's balance just before and just after.
 4. For every queued write it has seen (from a `write-queued` event or from the queue in the f02 state), once the
