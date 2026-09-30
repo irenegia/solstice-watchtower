@@ -46,7 +46,7 @@
   <div id="views" class="views muted"></div>
   <div id="head" class="muted">loading…</div>
   <div id="banner"></div>
-  <details id="glance" open><summary>At a glance</summary><div id="glanceStreams" class="glance-row muted">streams: waiting for the live read…</div><div id="glanceQuarter"></div><div id="glanceParams"></div></details>
+  <details id="glance" open><summary>At a glance</summary><div id="glanceStreams" class="glance-row muted">streams: waiting for the live read…</div><div id="glanceQuarter"></div><div id="glanceGate"></div><div id="glanceParams"></div></details>
 
   <h2>1. Queued writes</h2>
   <div class="muted">Writes waiting in the f02 pending-write queue. Time left runs in your browser.</div>
@@ -248,6 +248,7 @@ async function liveRead(status, nowEpoch, epochTime) {
     if (body.error) throw new Error(`${method}: ${body.error.message}`)
     return body.result
   }
+  glanceGate(status, rpc).catch(() => {}) // the gate line is extra: a failed read leaves it out
   const { State } = await rpc('Filecoin.StateReadState', [status.f02, null])
   const root = Object.values(State).find((v) => v && typeof v === 'object' && '/' in v)?.['/']
   const at = `live from the chain, f02 epoch ${State.Epoch} (${utc(epochTime(State.Epoch))})`
@@ -333,6 +334,31 @@ function glanceQuarter(status, records, nowEpoch, epochTime, quarterStart) {
     `<ul class="phases">${phases.join('')}</ul><div class="muted" style="font-size:12px">Q${Q}: ${utc(epochTime(s))} to ${utc(epochTime(e))}${cutoff ? '' : ' · REGISTRATION_CUTOFF not set'}</div>`
 }
 
+// At a glance, the gate line: what the next QuarterlyGateCheck will compare. The SWA has no getter for its gate
+// state, so this reads the four storage slots of GateParamsInfo (solstice src/lib/GateParams.sol: GATE_PARAMS_SLOT,
+// then lastCheckedQuarter, target.base, target.stepRatio, steps). The check reads quarter lastCheckedQuarter + 1 and
+// passes when AggregatedFPV >= base * stepRatio^steps (nextThreshold). Posted values come from this record.
+const GATE_PARAMS_SLOT = 0xf9abab00248d945495524c8caf6be2b837274c1becd1964fb3775f62fd6e4600n, GATE_STEPS = 8n
+async function glanceGate(status, rpc) {
+  if (!status.swa || !status.activationEpoch) return
+  const [last, base, ratio, steps] = await Promise.all([0n, 1n, 2n, 3n].map(async (i) => BigInt(await rpc('eth_getStorageAt', [status.swa, '0x' + (GATE_PARAMS_SLOT + i).toString(16), 'latest']))))
+  if (!base) return // contract not initialised on this network
+  let target = base; for (let i = 0n; i < steps; i++) target = target * ratio / E18
+  const usd = (v) => { const n = BigInt(v); return n > 0n && n < E18 / 100n ? `${n} raw (under 0.01 USD)` : scaled(n, E18, 2) + ' USD' }
+  const short = (a) => a.slice(0, 6) + '…' + a.slice(-4)
+  const q = last + 1n, posted = new Map()
+  for (const r of records0) if (r.kind === 'event' && (r.name === 'VolumePosted' || r.name === 'VolumeCorrected') && BigInt(r.fields.q) === q) posted.set(r.fields.orchestrator, usd(r.fields.volume) + (r.name === 'VolumeCorrected' ? ' (corrected)' : ''))
+  const bound = records0.filter((r) => r.name === `SRA aggregatedFilecoinPayVolume(${q})` && r.fields.usd !== undefined).at(-1)
+  const lastCheck = records0.filter((r) => r.kind === 'event' && r.name === 'QuarterlyGateCheckResult').at(-1)
+  const parts = steps >= GATE_STEPS ? [`all ${GATE_STEPS} steps done, no more checks`] : [
+    `next check reads Q${q}`, `target ${usd(target)} (steps ${steps} of ${GATE_STEPS})`,
+    `posted for Q${q}: ${posted.size ? [...posted].map(([o, v]) => `${short(o)} ${v}`).join(', ') : 'none yet'}`,
+    bound ? `Q${q} bound: ${usd(bound.fields.usd)}, ${BigInt(bound.fields.usd) >= target ? 'at or above' : 'below'} the target` : `Q${q} not bound yet`]
+  if (lastCheck) parts.push(`last check: Q${lastCheck.fields.quarter} ${lastCheck.fields.passed ? 'passed' : 'failed'}`)
+  $('glanceGate').innerHTML = `<div class="glance-row"><b>Gate:</b> ${parts.join(' · ')}</div>`
+  const cell = $('gateParamsCell'); if (cell) cell.textContent = `target.base ${scaled(base, E18, 2)} USD · target.stepRatio ${scaled(ratio, E18, 2)} · steps ${steps} (as set at deployment, read live from the SWA)`
+}
+
 // At a glance, part 3: the parameters in force. Governance parameters come from the SRA and SWA events of this record;
 // the admitted lists and the pricing parameters apply from the first epoch of the next quarter (FIP-0118 §2.2), so the
 // value in force in quarter Q is the last event before Start(Q), and a later one is shown as pending. GateParamsSet is
@@ -367,7 +393,7 @@ function glanceParams(status, records, nowEpoch, epochTime, quarterStart) {
   if (!lists.cur && !lists.next) row('Admitted lists', 'none set', '')
   if (!price.cur && !price.next) row('Pricing parameters', 'none set', '')
   if (gate) { const g = gate.fields.params; row('Gate parameters', `target.base ${scaled(g.target.base, E18, 2)} USD · target.stepRatio ${scaled(g.target.stepRatio, E18, 2)} · steps ${g.steps}`, `since ${utc(gate.time)}`) }
-  else row('Gate parameters', 'as set at deployment (no GateParamsSet event yet)', '')
+  else row('Gate parameters', '<span id="gateParamsCell">as set at deployment (no GateParamsSet event yet)</span>', '')
   row('EPOCHS_PER_QUARTER', `${L} = ${hours(L)}`, 'deployments.json')
   if (status.postPeriod) row('POST_PERIOD', `${status.postPeriod} epochs = ${hours(status.postPeriod)}`, 'deployments.json')
   if (status.verificationWindow) row('VERIFICATION_WINDOW', `${status.verificationWindow} epochs = ${hours(status.verificationWindow)}`, 'deployments.json')
