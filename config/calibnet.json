@@ -16,9 +16,11 @@
     "swaOwner1": "0x024a3c8CCA435db64D2dfa0f903E4823A5eBdf63",
     "swaOwner2": "0x4d6db5600c908b3C9b9888cFef43f27F38b203e9",
     "sraOwner2 (new Safe)": "0x675B57B5A4a9718C53804C4d8F6411aC8D5781e9",
-    "swaOwner2 (new Safe)": "0x95fD3ba3956e774704d3211fbD81458f8AB737db"
+    "swaOwner2 (new Safe)": "0x95fD3ba3956e774704d3211fbD81458f8AB737db",
+    "sraOwner1 (new Safe)": "0xC83810dF53E2129018e9E3FB9B31EB74E7b943C2",
+    "swaOwner1 (new Safe)": "0xfAbcEC18ceD64Fc268B8F1383B5D0Ba7F0A170C6"
   },
-  "ownersNote": "The two '(new Safe)' entries replaced sraOwner2 and swaOwner2 on 2026-10-01 (OwnerReplaced on the SRA at epoch 4118609 and on the SWA at 4118627, the rehearsal's Safe rotation). The old entries stay so that earlier messages keep their label.",
+  "ownersNote": "The '(new Safe)' entries replaced the four deploy-time owners during the rehearsal's Safe rotations: sraOwner2 and swaOwner2 on 2026-10-01 (OwnerReplaced on the SRA at epoch 4118609 and on the SWA at 4118627), sraOwner1 and swaOwner1 on 2026-10-02 (SRA at 4120740, SWA at 4120748). The old entries stay so that earlier messages keep their label.",
   "wallets": {
     "initialOrchestrator": "0x97A90f5696be5E3C8d3752C92Adac287c2b4484e"
   },
