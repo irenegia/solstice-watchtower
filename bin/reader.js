@@ -54,11 +54,19 @@ const rec = (kind, epoch, source, name, fields, extra = {}) =>
   records.push({ kind, epoch, time: epochToTime(cfg, epoch), quarter: quarterOf(cfg, epoch), source, name, fields, ...extra })
 
 // 1. f02 actor events. A node can have this API switched off; that is recorded, and the run goes on.
+// A node's event index can be a few seconds behind its chain head ("events for the requested block are not yet
+// available"), so the read is tried three times, 10 seconds apart, before a gap is recorded.
 let f02Events = []
-try {
-  for (let a = from; a <= to; a += LOG_CHUNK) f02Events.push(...((await rpc('Filecoin.GetActorEventsRaw', [{ addresses: [cfg.f02], fromHeight: a, toHeight: Math.min(to, a + LOG_CHUNK - 1) }])) ?? [])) // same 360-block cap as eth_getLogs
-} catch (err) {
-  rec('gap', from, 'reader', 'f02 events could not be read', { fromEpoch: from, toEpoch: to, reason: err.message.slice(0, 160) })
+for (let attempt = 1; ; attempt++) {
+  try {
+    f02Events = []
+    for (let a = from; a <= to; a += LOG_CHUNK) f02Events.push(...((await rpc('Filecoin.GetActorEventsRaw', [{ addresses: [cfg.f02], fromHeight: a, toHeight: Math.min(to, a + LOG_CHUNK - 1) }])) ?? [])) // same 360-block cap as eth_getLogs
+    break
+  } catch (err) {
+    if (attempt < 3) { await new Promise((r) => setTimeout(r, 10_000)); continue }
+    rec('gap', from, 'reader', 'f02 events could not be read', { fromEpoch: from, toEpoch: to, reason: err.message.slice(0, 160) })
+    break
+  }
 }
 for (const ev of f02Events) {
   if (ev.reverted) continue
