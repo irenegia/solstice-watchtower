@@ -9,7 +9,7 @@ import { quarterOf, epochToTime } from '../lib/chain.js'
 import { decodeActorEvent, decodeStreamsState, decodeF02Params, computeWeight, bigFromBytes, idToEthAddress, writeOutcome } from '../site/lib/f02.js'
 import { abi, decodeLog, decodeCall, decodeRevert } from '../lib/evm.js'
 import { PCT, entry, idAddress, tokenBytes, flat, sampleLog } from './samples.js'
-import { slackText } from '../lib/notify.js'
+import { slackText, notify } from '../lib/notify.js'
 
 const cfg = JSON.parse(readFileSync(new URL('../config/calibnet.json', import.meta.url), 'utf8'))
 const stepTo15 = dagCbor.encode([[[2, flat(15n, 4100000)]]]) // payload of a StepWeightRecords write: stream 2 to 15%
@@ -177,4 +177,24 @@ test('slack text: one message per run, notable records only, reverted and gap ma
   const withTx = [{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'VolumePosted', fields: { q: 1 }, tx: '0xabc' }]
   assert.match(slackText(withTx, { network: 'calibnet' }, 1, 1), /<https:\/\/calibration\.filfox\.info\/en\/message\/0xabc\|message>/)
   assert.doesNotMatch(slackText(withTx, { network: 'butterfly-gamma' }, 1, 1), /filfox/) // no explorer on butterflynet
+})
+
+test('slack outbox: a failed post is kept in status.slackPending and sent first at the next run', async () => {
+  process.env.SLACK_WEBHOOK = 'https://hooks.example/test'
+  process.env.SLACK_RETRY_MS = '1'
+  const sent = []
+  let fail = true
+  global.fetch = async (url, { body }) => { if (fail) throw new Error('down'); sent.push(JSON.parse(body).text); return { ok: true } }
+  const t = '2026-09-28T13:04:00.000Z'
+  const rec = (name) => [{ kind: 'event', epoch: 1, time: t, source: 'SRA', name, fields: {} }]
+  const status = {}
+  await notify(rec('VolumePosted'), { network: 'calibnet' }, 1, 2, status) // Slack down: three tries, then kept
+  assert.equal(sent.length, 0)
+  assert.equal(status.slackPending.length, 1)
+  assert.match(status.slackPending[0], /VolumePosted/)
+  fail = false
+  await notify(rec('SharesSubmitted'), { network: 'calibnet' }, 3, 4, status) // next run: the kept one first, then the new one
+  assert.deepEqual(sent.map((x) => /VolumePosted|SharesSubmitted/.exec(x)[0]), ['VolumePosted', 'SharesSubmitted'])
+  assert.deepEqual(status.slackPending, [])
+  delete process.env.SLACK_WEBHOOK
 })

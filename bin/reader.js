@@ -345,6 +345,6 @@ records.sort((a, b) => a.epoch - b.epoch)
 if (records.length) appendFileSync(recordsPath, records.map((r) => JSON.stringify(r)).join('\n') + '\n')
 // rpcUrl, f02 and addressPrefix are here for the page's live read of f02
 const { network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, postPeriod, verificationWindow, swa } = cfg
-writeFileSync(statusPath, JSON.stringify({ network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, postPeriod, verificationWindow, swa, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads, pending: status.pending }, null, 2))
 console.log(`epochs ${from}..${to} (chain head ${chainHead}): ${records.length} new records -> ${recordsPath}`)
-await notify(records, cfg, from, to) // Slack, only when SLACK_WEBHOOK is set and the network is not opted out
+await notify(records, cfg, from, to, status) // Slack, only when SLACK_WEBHOOK is set and the network is not opted out; a failed post waits in status.slackPending
+writeFileSync(statusPath, JSON.stringify({ network, rpcUrl, f02, addressPrefix, genesisTimestamp, epochSeconds, activationEpoch, epochsPerQuarter, swaTimelockEpochs, postPeriod, verificationWindow, swa, lastEpoch: to, lastRun: new Date().toISOString(), reads: status.reads, pending: status.pending, slackPending: status.slackPending }, null, 2))
