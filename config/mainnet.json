@@ -8,6 +8,7 @@
   "epochsPerQuarter": 262974,
   "swaTimelockEpochs": 20160,
   "f02": "f02",
+  "chainId": 314,
   "sra": "0x0339f205314C8210AF7Cb075d1A96D012e7896a9",
   "swa": "0x66C11A9F6dfEC3c1557958cF9f575a023EB01421",
   "owners": {

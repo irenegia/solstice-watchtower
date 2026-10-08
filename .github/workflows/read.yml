@@ -1,5 +1,5 @@
-# Runs the reader every 10 minutes and commits the record. It only reads from the public calibnet endpoint;
-# it holds no key and no secret. Rules for when it fails are in DESIGN.md ("The scheduled job").
+# Runs the reader every 10 minutes and commits the record, then the backup cranker. The reader only reads from the
+# public endpoints and holds no key; the cranker step holds CRANK_KEY. Rules for when it fails are in DESIGN.md.
 name: read
 on:
   schedule:
@@ -52,6 +52,13 @@ jobs:
       # Butterflynet gamma, the nv29 test network (lotus-infra issue #1654). A failure here must not stop the
       # calibnet record from being committed, so this step may fail without failing the job.
       - run: node bin/reader.js config/butterfly-gamma.json
+        continue-on-error: true
+      # Backup cranker (bin/crank.js): sends submitShares / quarterlyGateCheck on calibnet when a call has been
+      # possible for 30 minutes and is still missing. Needs the repository secret CRANK_KEY (a calibnet account
+      # with tFIL, used for nothing else); without it the step is a dry run. Its state file lands in the commit below.
+      - run: node bin/crank.js config/calibnet.json
+        env:
+          CRANK_KEY: ${{ secrets.CRANK_KEY }}
         continue-on-error: true
       - name: Commit the record if it changed
         run: |
