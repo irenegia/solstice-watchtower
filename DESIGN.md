@@ -228,6 +228,24 @@ Decisions (Irene, 2026-09-23):
    before the record starts (the migration's initial one, when the record starts after deployment) is known only
    through its `OrchestratorAdmitted` event at deployment, which the calibnet and mainnet records have.
 
+## The backup cranker (`bin/crank.js`, 2026-10-08)
+
+Irene's ask: a second, independent cranker, so the two permissionless calls do not depend on one system.
+A step of the read workflow runs it on calibnet after the readers:
+
+- What it sends: `submitShares(q)` on the SRA for a bound quarter the SRA has not submitted
+  (`lastSubmittedQuarter` from the SRA's `QUARTER_SLOT`), and `quarterlyGateCheck()` on the SWA when the
+  quarter it reads (`lastCheckedQuarter + 1`, from `GATE_PARAMS_SLOT`) is bound and `steps < 8`.
+- Simulate first: every call is tried with `eth_call`; a call that would revert is not sent (the reason is logged).
+- Backup, not a race: a call is sent only when its simulation has passed for `crankDelayEpochs` (60 = 30 minutes),
+  so the primary cranker (decentramike/solstice-cranker) has time to act. The first passing epoch is kept in
+  `site/data/calibnet/crank.json`, committed with the record.
+- The key: repository secret `CRANK_KEY`, a calibnet MetaMask account with tFIL and no other use; without it the
+  step is a dry run. Calibnet only; mainnet needs its own key and a separate decision.
+- Not included: the daily `Claim`. It is a native f02 message and needs an f1/f3 sender; this key is an f410 account.
+- Limit: both crankers run on GitHub Actions. They differ in code, key, operator and trigger, but a GitHub outage
+  stops both; said to Phi-rjan for the operational setup.
+
 ## Later steps (not built)
 
 1. Done 2026-09-18, again 2026-09-20 (adds the butterfly views): one manual publish of `site/` to Filecoin with

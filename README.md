@@ -37,7 +37,12 @@ Mon 2026-09-28 13:00 UTC. Until then the real record holds the deployment events
 "sample" and "real test" views were removed from the page on 2026-09-22; the real views are calibnet and the two butterflynet test networks.*
 
 A scheduled job (`.github/workflows/read.yml`) runs the reader every 15 minutes (started by an outside timer) and commits the records to
-`site/data/calibnet/`, `site/data/mainnet/` and `site/data/butterfly-gamma/`. It only reads from a public endpoint and holds no key.
+`site/data/calibnet/`, `site/data/mainnet/` and `site/data/butterfly-gamma/`. The reader only reads from a public endpoint and holds no key.
+
+The same job ends with a backup cranker (`bin/crank.js`, since 2026-10-08): on calibnet it sends `submitShares(q)` and
+`quarterlyGateCheck()` when a call has been possible for 30 minutes and nobody sent it, so the primary cranker
+(https://github.com/decentramike/solstice-cranker) goes first. It needs the repository secret `CRANK_KEY` (a calibnet
+account used for nothing else); without it, it only simulates. Details in DESIGN.md.
 
 Needs Node.js 22 or newer.
 
