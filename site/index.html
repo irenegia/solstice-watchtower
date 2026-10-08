@@ -21,6 +21,7 @@
   pre { margin:6px 0 0; white-space:pre-wrap; word-break:break-all; color:var(--muted); }
   details.quarter { margin:10px 0; } details.quarter > summary { cursor:pointer; font-weight:600; padding:6px 0; }
   details.row > summary { cursor:pointer; list-style:none; } details.row > summary::-webkit-details-marker { display:none; }
+  details.fold > summary::before { content:'▸ '; } details.fold[open] > summary::before { content:'▾ '; } /* the two folded lists in At a glance: a visible arrow, so people see they open */
   .filters { display:flex; gap:16px; flex-wrap:wrap; margin:8px 0; font-size:14px; }
   /* The network bar: one colour per network, so a visitor sees at once which chain the page shows. */
   body { border-top:10px solid var(--net); } :root { --net:#0b57d0; } body[data-net='butterfly'] { --net:#e0731c; } body[data-net='mainnet'] { --net:#1a7f37; }
@@ -46,7 +47,7 @@
   <div id="views" class="views muted"></div>
   <div id="head" class="muted">loading…</div>
   <div id="banner"></div>
-  <details id="glance" open><summary>At a glance</summary><div id="glanceStreams" class="glance-row muted">streams: waiting for the live read…</div><div id="glanceQuarter"></div><div id="glanceGate"></div><div id="glanceParams"></div></details>
+  <details id="glance" open><summary>At a glance</summary><div id="glanceStreams" class="glance-row muted">streams: waiting for the live read…</div><div id="glanceQuarter"></div><div id="glanceGate"></div><div id="glanceParams"></div><div id="glanceTasks"></div></details>
 
   <h2>1. Queued writes</h2>
   <div class="muted">Writes waiting in the f02 pending-write queue. Time left runs in your browser.</div>
@@ -166,6 +167,7 @@ async function main() {
   glanceQuarter(status, records, nowEpoch, epochTime, quarterStart)
   glanceOrchestrators(records)
   glanceParams(status, records, nowEpoch, epochTime, quarterStart)
+  glanceTasks(status, records, nowEpoch)
   try { const g = $('glance'); if (localStorage.getItem('glance') === 'closed') g.open = false; g.ontoggle = () => { try { localStorage.setItem('glance', g.open ? 'open' : 'closed') } catch {} } } catch {}
   liveRead(status, nowEpoch, epochTime).catch((err) => { $('live').innerHTML = `<div class="banner stopped">Live read of f02 failed: ${esc(err.message)}. Parts 1 and 3 show recorded values only.</div>` })
 
@@ -359,6 +361,42 @@ async function glanceGate(status, rpc) {
   const cell = $('gateParamsCell'); if (cell) cell.textContent = `target.base ${scaled(base, E18, 2)} USD · target.stepRatio ${scaled(ratio, E18, 2)} · steps ${steps} (as set at deployment, read live from the SWA)`
 }
 
+// At a glance, the open governance tasks (rvagg's ask, 2026-10-08): a Safe proposal that got one approval and was
+// never executed or vetoed stays in the contract, and its approval still counts later (Owners.sol: a removed owner's
+// bit "recycles to a future owner carrying the old approvals"). Built from this record: a task opens on Submitted,
+// closes on a second Approved (executed, or held for an upgrade / SetGateParams) or on Rejected. A confirming call
+// that reverted left no Approved event, so its task stays open here as it does on chain. The contract's task storage
+// itself is not read.
+function glanceTasks(status, records, nowEpoch) {
+  const tasks = new Map(), calls = new Map(), owners = { SRA: new Set(), SWA: new Set() }
+  for (const r of records) if (r.kind === 'message' && r.tx) calls.set(r.source + r.tx, r)
+  for (const r of records) {
+    if (r.kind !== 'event') continue
+    if (r.name === 'OwnerAdded') owners[r.source]?.add(r.fields.owner.toLowerCase())
+    if (r.name === 'OwnerRemoved') owners[r.source]?.delete(r.fields.owner.toLowerCase())
+    if (!['Submitted', 'Approved', 'Rejected'].includes(r.name)) continue
+    const k = r.source + r.fields.taskId
+    if (r.name === 'Submitted' || !tasks.has(k)) tasks.set(k, { source: r.source, taskId: r.fields.taskId, epoch: r.epoch, time: r.time, call: calls.get(r.source + r.tx), approvals: [], open: true })
+    const t = tasks.get(k)
+    if (r.name === 'Approved') { t.approvals.push({ owner: r.fields.owner, time: r.time }); if (t.approvals.length >= 2) t.open = false }
+    if (r.name === 'Rejected') t.open = false
+  }
+  const open = [...tasks.values()].filter((t) => t.open).sort((a, b) => a.epoch - b.epoch)
+  const short = (a) => a.slice(0, 6) + '…' + a.slice(-4)
+  const days = (e) => ((nowEpoch() - e) * status.epochSeconds / 86400).toFixed(1)
+  const rows = open.map((t) => {
+    const stale = t.approvals.filter((a) => !owners[t.source].has(a.owner.toLowerCase()))
+    const warn = Number(days(t.epoch)) > 7 || stale.length
+    return `<tr><td>${warn ? '⚠ ' : ''}${t.source}</td><td>${t.call ? `<b>${esc(t.call.name)}</b> ${summary(t.call.fields)}` : `task ${short(t.taskId)}`}</td>` +
+      `<td>${t.call?.via ? esc(t.call.via) : t.call?.from ? short(t.call.from) : '–'}</td>` +
+      `<td class="nowrap">${t.approvals.map((a) => `${short(a.owner)} ${utc(a.time)}${owners[t.source].has(a.owner.toLowerCase()) ? '' : ' (no longer an owner)'}`).join('<br>') || 'none'}</td>` +
+      `<td class="nowrap">${days(t.epoch)} days${t.call?.tx ? `<br><a href="${msgLink(t.call.tx)}">message</a>` : ''}</td></tr>`
+  })
+  $('glanceTasks').innerHTML = `<details class="row fold"><summary><b>Pending governance tasks:</b> ${open.length}${open.some((t) => Number(days(t.epoch)) > 7 || t.approvals.some((a) => !owners[t.source].has(a.owner.toLowerCase()))) ? ' ⚠' : ''}</summary>` +
+    `<div class="muted" style="font-size:12px">Proposals with one approval, not executed and not vetoed, as this record sees them. ⚠ = older than 7 days, or approved by a Safe that is no longer an owner (its approval still counts, see Owners.sol). A task whose second approval starts a hold (upgrade, SetGateParams) is counted as closed.</div>` +
+    (rows.length ? `<div class="scroll"><table class="params"><tr><td>Contract</td><td>Proposal</td><td>Proposed via</td><td>Approvals</td><td>Age</td></tr>${rows.join('')}</table></div>` : '') + '</details>'
+}
+
 // At a glance, part 3: the parameters in force. Governance parameters come from the SRA and SWA events of this record;
 // the admitted lists and the pricing parameters apply from the first epoch of the next quarter (FIP-0118 §2.2), so the
 // value in force in quarter Q is the last event before Start(Q), and a later one is shown as pending. GateParamsSet is
@@ -398,7 +436,7 @@ function glanceParams(status, records, nowEpoch, epochTime, quarterStart) {
   if (status.postPeriod) row('POST_PERIOD', `${status.postPeriod} epochs = ${hours(status.postPeriod)}`, 'deployments.json')
   if (status.verificationWindow) row('VERIFICATION_WINDOW', `${status.verificationWindow} epochs = ${hours(status.verificationWindow)}`, 'deployments.json')
   if (status.swaTimelockEpochs) row('SWA_TIMELOCK', `${status.swaTimelockEpochs} epochs = ${hours(status.swaTimelockEpochs)}`, 'f02 state (Lotus params)')
-  $('glanceParams').innerHTML = `<details class="row"><summary><b>Parameters in force</b></summary><div class="scroll"><table class="params">${rows.join('')}</table></div></details>`
+  $('glanceParams').innerHTML = `<details class="row fold"><summary><b>Parameters in force</b></summary><div class="scroll"><table class="params">${rows.join('')}</table></div></details>`
 }
 
 // Footnote: the SRA counts quarters from its activationEpoch (deployments.json); f02's ramp starts at stream 1's t_start,
