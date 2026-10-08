@@ -60,4 +60,5 @@ for (const call of due) {
   console.log(`${call.key}: ${receipt.status} in block ${receipt.blockNumber}`)
   delete state.possibleSince[call.key]
 }
+for (const k of Object.keys(state.possibleSince)) if (!due.some((c) => c.key === k)) delete state.possibleSince[k] // done by someone else, or no longer due
 writeFileSync(statePath, JSON.stringify({ possibleSince: state.possibleSince, lastRun: new Date().toISOString(), head }, null, 2))
