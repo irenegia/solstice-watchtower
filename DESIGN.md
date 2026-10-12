@@ -246,8 +246,9 @@ A step of the read workflow runs it on calibnet after the readers:
   wallet in a live stream's share map or payable rows and every tombstone's payable rows, simulates `Claim(id,
   wallets)` per stream with `Filecoin.StateCall`, and sends only a batch that would pay something. `Claim` is a native
   f02 message, so its key is a separate f1 account (repository secret `CLAIM_KEY`; the run checks that the key's
-  address is the configured `claimer (watchtower backup)` wallet, after a secret mix-up on 2026-10-12). Nobody else
-  runs a Claim keeper on calibnet: decentramike's cranker has no Claim step. State: `site/data/calibnet/claim.json`.
+  address is the configured `claimer (watchtower backup)` wallet, after a secret mix-up on 2026-10-12). A backup: Claims
+  are already sent on calibnet from another f1 address (t15gfg…), daily for A's wallet; the public solstice-cranker
+  repo has no Claim step, so who sends them is not known here. State: `site/data/calibnet/claim.json`.
 - Limit: both crankers run on GitHub Actions. They differ in code, key, operator and trigger, but a GitHub outage
   stops both; said to Phi-rjan for the operational setup.
 
