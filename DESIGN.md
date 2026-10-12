@@ -242,7 +242,12 @@ A step of the read workflow runs it on calibnet after the readers:
   `site/data/calibnet/crank.json`, committed with the record.
 - The key: repository secret `CRANK_KEY`, a calibnet MetaMask account with tFIL and no other use; without it the
   step is a dry run. Calibnet only; mainnet needs its own key and a separate decision.
-- Not included: the daily `Claim`. It is a native f02 message and needs an f1/f3 sender; this key is an f410 account.
+- The daily `Claim` is a second step, `bin/claim.js` (2026-10-12): once a day it reads the f02 state, lists every
+  wallet in a live stream's share map or payable rows and every tombstone's payable rows, simulates `Claim(id,
+  wallets)` per stream with `Filecoin.StateCall`, and sends only a batch that would pay something. `Claim` is a native
+  f02 message, so its key is a separate f1 account (repository secret `CLAIM_KEY`; the run checks that the key's
+  address is the configured `claimer (watchtower backup)` wallet, after a secret mix-up on 2026-10-12). Nobody else
+  runs a Claim keeper on calibnet: decentramike's cranker has no Claim step. State: `site/data/calibnet/claim.json`.
 - Limit: both crankers run on GitHub Actions. They differ in code, key, operator and trigger, but a GitHub outage
   stops both; said to Phi-rjan for the operational setup.
 

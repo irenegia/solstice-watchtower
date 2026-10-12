@@ -42,7 +42,9 @@ A scheduled job (`.github/workflows/read.yml`) runs the reader every 15 minutes 
 The same job ends with a backup cranker (`bin/crank.js`, since 2026-10-08): on calibnet it sends `submitShares(q)` and
 `quarterlyGateCheck()` when a call has been possible for 30 minutes and nobody sent it, so the primary cranker
 (https://github.com/decentramike/solstice-cranker) goes first. It needs the repository secret `CRANK_KEY` (a calibnet
-account used for nothing else); without it, it only simulates. Details in DESIGN.md.
+account used for nothing else); without it, it only simulates. A second step (`bin/claim.js`, since 2026-10-12) sends
+the f02 `Claim` once a day for every wallet that has something to collect; its key is the secret `CLAIM_KEY`, an f1
+account. Details in DESIGN.md.
 
 Needs Node.js 22 or newer.
 

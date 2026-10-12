@@ -305,7 +305,8 @@ for (const [key, write] of Object.entries(status.pending)) {
   delete status.pending[key]
 }
 for (const [label, address] of Object.entries(cfg.wallets)) {
-  await read('balance', `balance of ${label}`, async () => ({ address, attoFil: BigInt(await rpc('eth_getBalance', [address, 'latest'])).toString() }))
+  // an f1 wallet (the claimer) has no 0x form that eth_getBalance accepts; the native call takes both
+  await read('balance', `balance of ${label}`, async () => ({ address, attoFil: BigInt(address.startsWith('0x') ? await rpc('eth_getBalance', [address, 'latest']) : await rpc('Filecoin.WalletBalance', [address])).toString() }))
 }
 const sra = [...contracts].find(([, n]) => n === 'SRA')?.[0]
 if (sra) {

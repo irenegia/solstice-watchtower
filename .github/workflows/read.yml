@@ -60,6 +60,12 @@ jobs:
         env:
           CRANK_KEY: ${{ secrets.CRANK_KEY }}
         continue-on-error: true
+      # Daily Claim keeper (bin/claim.js): once a day, Claim for every wallet f02 owes something to. Needs the
+      # repository secret CLAIM_KEY (an f1 calibnet account with tFIL, used for nothing else); without it, a dry run.
+      - run: node bin/claim.js config/calibnet.json
+        env:
+          CLAIM_KEY: ${{ secrets.CLAIM_KEY }}
+        continue-on-error: true
       - name: Commit the record if it changed
         run: |
           git config user.name "watchtower reader"

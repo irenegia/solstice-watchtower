@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ipld/dag-cbor": "^9.2.0",
+    "iso-filecoin": "^7.4.7",
     "viem": "^2.48.3"
   }
 }
