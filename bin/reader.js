@@ -96,8 +96,19 @@ const unreadable = [] // epochs whose block the node could not serve; recorded a
 if (contracts.size) {
   // 2. SRA and SWA events
   // The public endpoint caps one eth_getLogs query (2880 blocks on 2026-09-18, 360 on one answer of 2026-09-23), so the range is read in chunks.
+  // Same "not yet available" lag as the f02 read above (run #2241, 2026-10-13): three attempts, 10 seconds apart; a
+  // third failure still fails the run, and the next run starts again from the last committed epoch.
   const logs = []
-  for (let a = from; a <= to; a += LOG_CHUNK) logs.push(...await rpc('eth_getLogs', [{ address: [...contracts.keys()], fromBlock: toHex(a), toBlock: toHex(Math.min(to, a + LOG_CHUNK - 1)) }]))
+  for (let attempt = 1; ; attempt++) {
+    try {
+      logs.length = 0
+      for (let a = from; a <= to; a += LOG_CHUNK) logs.push(...await rpc('eth_getLogs', [{ address: [...contracts.keys()], fromBlock: toHex(a), toBlock: toHex(Math.min(to, a + LOG_CHUNK - 1)) }]))
+      break
+    } catch (err) {
+      if (attempt === 3) throw err
+      await new Promise((r) => setTimeout(r, 10_000))
+    }
+  }
   for (const log of logs) {
     const { name, fields } = decodeLog(log)
     rec('event', Number(log.blockNumber), contracts.get(log.address.toLowerCase()), name, fields, { tx: log.transactionHash, raw: { topics: log.topics, data: log.data } })
