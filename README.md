@@ -44,7 +44,8 @@ The same job ends with a backup cranker (`bin/crank.js`, since 2026-10-08): on c
 (https://github.com/decentramike/solstice-cranker) goes first. It needs the repository secret `CRANK_KEY` (a calibnet
 account used for nothing else); without it, it only simulates. A second step (`bin/claim.js`, since 2026-10-12) sends
 the f02 `Claim` once a day for every wallet that has something to collect; its key is the secret `CLAIM_KEY`, an f1
-account. Details in DESIGN.md.
+account. Both steps also run for mainnet (secrets `CRANK_KEY_MAINNET`, `CLAIM_KEY_MAINNET`; dry runs until the
+secrets exist). Details in DESIGN.md.
 
 Needs Node.js 22 or newer.
 

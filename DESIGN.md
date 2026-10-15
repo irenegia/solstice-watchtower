@@ -241,7 +241,10 @@ A step of the read workflow runs it on calibnet after the readers:
   so the primary cranker (decentramike/solstice-cranker) has time to act. The first passing epoch is kept in
   `site/data/calibnet/crank.json`, committed with the record.
 - The key: repository secret `CRANK_KEY`, a calibnet MetaMask account with tFIL and no other use; without it the
-  step is a dry run. Calibnet only; mainnet needs its own key and a separate decision.
+  step is a dry run. The run refuses a key whose address is not the configured `cranker (watchtower backup)` wallet.
+- Mainnet (2026-10-15, Irene's decision): the cranker and the Claim keeper run for `config/mainnet.json` too, with
+  their own secrets `CRANK_KEY_MAINNET` (f410) and `CLAIM_KEY_MAINNET` (f1), real FIL, and a one-day delay
+  (`crankDelayEpochs` 2880) before a crank is sent. Dry runs until the secrets and the wallet addresses are in place.
 - The daily `Claim` is a second step, `bin/claim.js` (2026-10-12): once a day it reads the f02 state, lists every
   wallet in a live stream's share map or payable rows and every tombstone's payable rows, simulates `Claim(id,
   wallets)` per stream with `Filecoin.StateCall`, and sends only a batch that would pay something. `Claim` is a native

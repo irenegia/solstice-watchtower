@@ -19,6 +19,9 @@ const chain = { id: cfg.chainId, name: cfg.network, nativeCurrency: { name: 'FIL
 const pub = createPublicClient({ chain, transport: http(cfg.rpcUrl) })
 const key = process.env.CRANK_KEY && (process.env.CRANK_KEY.startsWith('0x') ? process.env.CRANK_KEY : '0x' + process.env.CRANK_KEY)
 const account = key ? privateKeyToAccount(key) : null
+// The key must be the configured backup cranker wallet: a secret pasted under the wrong name is caught here, not on chain.
+const expected = cfg.wallets?.['cranker (watchtower backup)']
+if (account && account.address.toLowerCase() !== expected?.toLowerCase()) throw new Error(`CRANK_KEY is the key of ${account.address}, not of the configured cranker ${expected}`)
 const wallet = account ? createWalletClient({ account, chain, transport: http(cfg.rpcUrl) }) : null
 const statePath = join(cfg.dataDir, 'crank.json')
 const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) : { possibleSince: {} }

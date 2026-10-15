@@ -29,7 +29,8 @@ if (state.lastRun && Date.now() - Date.parse(state.lastRun) < DAY_MS && !process
 
 const rpc = makeRpc(cfg.rpcUrl)
 const { State } = await rpc('Filecoin.StateReadState', [cfg.f02, null])
-const root = Object.values(State).find((v) => v && typeof v === 'object' && '/' in v)['/']
+const root = Object.values(State).find((v) => v && typeof v === 'object' && '/' in v)?.['/']
+if (!root) { console.log(`${cfg.network} claim: f02 has no stream state yet (before activation)`); process.exit(0) }
 const st = decodeStreamsState(Buffer.from(await rpc('Filecoin.ChainReadObj', [{ '/': root }]), 'base64'), cfg.addressPrefix)
 const wallets = (rows) => [...new Set(rows.map((r) => r.recipient))]
 const batches = [

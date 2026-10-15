@@ -20,6 +20,8 @@
   "wallets": {
     "initialOrchestrator": "0x97A90f5696be5E3C8d3752C92Adac287c2b4484e"
   },
+  "crankDelayEpochs": 2880,
+  "crankNote": "backup cranker and Claim keeper: a call is sent only after it has been possible for one day (2880 epochs), so the primary cranker goes first; the keys are the secrets CRANK_KEY_MAINNET (an f410 account, label 'cranker (watchtower backup)') and CLAIM_KEY_MAINNET (an f1 account, label 'claimer (watchtower backup)'); without them the steps are dry runs; add both wallets here when the keys exist",
   "dataDir": "site/data/mainnet",
   "startEpoch": 6393225,
   "source": "solstice deployments.json on main at 0006edc (chain 314): activationEpoch 6470280 = Mon 2026-10-19 13:00 UTC, set by solstice PR #97 (b9a63a8, 2026-10-06) after Lotus v1.37.0 fixed UpgradeSolsticeHeight 6470279; the live SRA keeps the old 6450120 until the v1.0.2 upgrade of solstice #96 executes (from 2026-10-14 18:15 UTC), quarter 262974, hold 20160; SWA timelock 20160 (7 days) per FIP-0118. Contracts deployed 2026-09-22: SRA at 6393228 (tx 0x0f9621c1...), SWA at 6393232 (tx 0xf543cbf0...), found with eth_getLogs (Upgraded). startEpoch is three epochs before the SRA deployment.",

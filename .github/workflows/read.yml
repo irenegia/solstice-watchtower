@@ -66,6 +66,16 @@ jobs:
         env:
           CLAIM_KEY: ${{ secrets.CLAIM_KEY }}
         continue-on-error: true
+      # The same two steps on mainnet, with their own keys (real FIL): CRANK_KEY_MAINNET and CLAIM_KEY_MAINNET.
+      # Without the secrets they are dry runs. The mainnet delay is one day (config crankDelayEpochs).
+      - run: node bin/crank.js config/mainnet.json
+        env:
+          CRANK_KEY: ${{ secrets.CRANK_KEY_MAINNET }}
+        continue-on-error: true
+      - run: node bin/claim.js config/mainnet.json
+        env:
+          CLAIM_KEY: ${{ secrets.CLAIM_KEY_MAINNET }}
+        continue-on-error: true
       - name: Commit the record if it changed
         run: |
           git config user.name "watchtower reader"
