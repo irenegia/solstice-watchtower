@@ -49,10 +49,8 @@ jobs:
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         continue-on-error: true
-      # Butterflynet gamma, the nv29 test network (lotus-infra issue #1654). A failure here must not stop the
-      # calibnet record from being committed, so this step may fail without failing the job.
-      - run: node bin/reader.js config/butterfly-gamma.json
-        continue-on-error: true
+      # Butterflynet gamma (the nv29 test network) was read here until 2026-10-15; its endpoint no longer resolves.
+      # Its record stays in site/data/butterfly-gamma and on the page.
       # Backup cranker (bin/crank.js): sends submitShares / quarterlyGateCheck on calibnet when a call has been
       # possible for 30 minutes and is still missing. Needs the repository secret CRANK_KEY (a calibnet account
       # with tFIL, used for nothing else); without it the step is a dry run. Its state file lands in the commit below.
@@ -80,6 +78,6 @@ jobs:
         run: |
           git config user.name "watchtower reader"
           git config user.email "actions@users.noreply.github.com"
-          git add site/data/calibnet site/data/mainnet site/data/butterfly-gamma
+          git add site/data/calibnet site/data/mainnet
           git diff --cached --quiet || git commit -m "record: $(jq -r .lastEpoch site/data/calibnet/status.json)"
           git push
