@@ -31,7 +31,7 @@
   details.fold > summary::before { content:'▸ '; } details.fold[open] > summary::before { content:'▾ '; } /* the two folded lists in At a glance: a visible arrow, so people see they open */
   .filters { display:flex; gap:16px; flex-wrap:wrap; margin:10px 0; font-size:14px; }
   /* The network bar: one colour per network, so a visitor sees at once which chain the page shows. */
-  body { border-top:8px solid var(--net); } body[data-net='butterfly'] { --net:#e0731c; } body[data-net='mainnet'] { --net:#1a7f37; }
+  body { border-top:8px solid var(--net); } body[data-net='mainnet'] { --net:#1a7f37; }
   .net { display:inline-block; padding:3px 13px; border-radius:999px; background:var(--net); color:#fff; font-size:15px; font-weight:700; }
   .views { margin:4px 0 8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:14px; }
   .views a { display:inline-block; padding:3px 12px; border:1px solid var(--line); border-radius:999px; background:var(--card); color:var(--fg); text-decoration:none; }
@@ -91,10 +91,11 @@ const REPO_RAW = 'https://raw.githubusercontent.com/irenegia/solstice-watchtower
 const STALE_MINUTES = 30
 // Views of a network the scheduled job still watches: they get the repo fetch, the "reader stopped" warning and the
 // live read of f02. The other views are fixed records.
-const LIVE = ['calibnet', 'mainnet', 'butterfly-gamma']
-// The views, each with the note shown on top. calibnet is the real watchtower record and needs no note.
-// The sample and real-test views were removed 2026-09-22 (their records stay in the repo history).
-const VIEWS = { calibnet: 'calibnet', mainnet: 'mainnet', 'butterfly-gamma': 'butterfly gamma' }
+const LIVE = ['mainnet', 'calibnet']
+// The views, each with the note shown on top. mainnet is the default since 2026-10-16 (the activation week).
+// The sample and real-test views were removed 2026-09-22, the butterfly gamma view 2026-10-16 (its network is gone);
+// their records stay in the repo.
+const VIEWS = { mainnet: 'mainnet', calibnet: 'calibnet' }
 // The calibnet contracts were redeployed on 2026-09-22 (solstice PR #83). The record of the first deployment is frozen in
 // this folder and shown at the bottom of the calibnet history.
 const OLD_CALIBNET = { dir: 'data/calibnet-2026-09-17/', label: 'Deploy of 2026-09-17, replaced on 2026-09-22 (solstice PR #83)',
@@ -105,13 +106,9 @@ const NOTES = {
     'with 1-day quarters and a 6-hour SWA_TIMELOCK. The history of the first deployment is at the bottom of part 2.',
   mainnet: 'MAINNET. The SRA and SWA were deployed on 2026-09-22 at the same addresses as on calibnet. FIP-0118 activates at epoch 6470280 (Mon 2026-10-19 13:00 UTC, ' +
     'Lotus v1.37.0 upgrade epoch 6470279); before it, f02 has no queue and this page shows only the deployment events and governance actions. Quarters of 262,974 epochs (about 91 days), 7-day SWA_TIMELOCK.',
-  'butterfly-gamma': 'A live test network, not calibnet. Butterflynet "gamma" started 2026-09-19 09:00 UTC; FIP-0118 activates on it at epoch 5220 ' +
-    '(Mon 2026-09-21 04:30 UTC), with 2-hour quarters and a 20-minute SWA_TIMELOCK. rvagg runs the nv29 test plan on it. Quarter numbers here follow the FIP: ' +
-    'quarter 1 starts at the activation epoch. The contracts and rvagg\'s plan count the same quarters from 0, so his "Q0" is quarter 1 here. ' +
-    'The message links do not work: butterflynet has no block explorer.',
 }
 const requested = new URLSearchParams(location.search).get('data')
-const dataset = requested in NOTES ? requested : 'calibnet'
+const dataset = requested in NOTES ? requested : 'mainnet'
 const dir = `data/${dataset}/`
 const $ = (id) => document.getElementById(id)
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -164,7 +161,7 @@ async function main() {
   document.body.dataset.net = status.network.startsWith('butterfly') ? 'butterfly' : status.network === 'mainnet' ? 'mainnet' : 'calibnet'
   explorer = status.network === 'mainnet' ? 'https://filfox.info/en/message/' : 'https://calibration.filfox.info/en/message/'
   $('views').innerHTML = 'You are looking at <b>' + esc(status.network) + '</b>. Other networks: ' +
-    Object.entries(VIEWS).map(([k, v]) => k === dataset ? `<a class="here">${v}</a>` : `<a href="${k === 'calibnet' ? '?' : `?data=${k}`}">${v}</a>`).join(' | ')
+    Object.entries(VIEWS).map(([k, v]) => k === dataset ? `<a class="here">${v}</a>` : `<a href="${k === 'mainnet' ? '?' : `?data=${k}`}">${v}</a>`).join(' | ')
   $('head').innerHTML = `last epoch read ${status.lastEpoch} (${utc(epochTime(status.lastEpoch))}) · ` +
     (quarterNow ? `quarter ${quarterNow} now` : 'before activation') + ` · <a href="${dir}records.jsonl">record file</a>`
   // The network note is background, not a warning: it sits in the footer. Only warnings (the stopped reader) go on top.

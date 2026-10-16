@@ -171,9 +171,9 @@ test('slack text: one message per run, notable records only, reverted and gap ma
   const huge = slackText([{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'x', fields: { list: Array.from({ length: 30 }, (_, i) => '0x' + String(i).padStart(40, '0')) } }], { network: 'calibnet' }, 1, 1)
   assert.match(huge, /0x0{38}\d\d …\n/) // a very long list is cut at a separator, never inside a value
   assert.doesNotMatch(text, /balance/)
-  assert.match(text, /solsticewatchtower\.eth\.limo\/$/)
+  assert.match(text, /\?data=calibnet$/) // calibnet is a secondary view since 2026-10-16
   assert.equal(slackText([records[0]], { network: 'calibnet' }, 1, 5), null) // nothing notable: no message
-  assert.match(slackText(records, { network: 'mainnet' }, 1, 5), /\?data=mainnet$/)
+  assert.match(slackText(records, { network: 'mainnet' }, 1, 5), /solsticewatchtower\.eth\.limo\/$/) // mainnet is the default view
   const withTx = [{ kind: 'event', epoch: 1, time: t, source: 'SRA', name: 'VolumePosted', fields: { q: 1 }, tx: '0xabc' }]
   assert.match(slackText(withTx, { network: 'calibnet' }, 1, 1), /<https:\/\/calibration\.filfox\.info\/en\/message\/0xabc\|message>/)
   assert.doesNotMatch(slackText(withTx, { network: 'butterfly-gamma' }, 1, 1), /filfox/) // no explorer on butterflynet

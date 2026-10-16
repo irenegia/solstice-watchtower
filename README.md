@@ -9,7 +9,7 @@ Reads what landed on chain in f02, the SWA and the SRA (FIP-0118) and shows it o
 > one day of butterflynet test data (2026-09-21) compared with the test plan of the person who ran it (see DESIGN.md).
 
 - Live page, hosted on Filecoin (Filecoin Pin), stable address through ENS: **https://solsticewatchtower.eth.limo/**
-  Views: calibnet (default), `?data=mainnet`, `?data=butterfly-gamma`. The ENS name `solsticewatchtower.eth` points to the
+  Views: mainnet (default since 2026-10-16), `?data=calibnet`. The butterfly gamma view was removed on 2026-10-16 (its network is gone; the record stays in `site/data/butterfly-gamma/`). The ENS name `solsticewatchtower.eth` points to the
   current version's CID and is updated at each publish; the data stays fresh because the page fetches the record from
   this repo (`site/data/`).
 - Older versions, fixed to their CID (they keep working, but show only what their view list had):
