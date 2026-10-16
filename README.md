@@ -16,6 +16,8 @@ Reads what landed on chain in f02, the SWA and the SRA (FIP-0118) and shows it o
 
   | Published | Link | Views |
   |---|---|---|
+  | 2026-10-08 | https://inbrowser.link/ipfs/bafybeidkctdb4tvrzaxo4frph2bljl5mnnizwvciziakfxlaxt7jbsjsqu/ | calibnet (default), mainnet, butterfly gamma; pending governance tasks list, gate line |
+  | 2026-09-30 | https://inbrowser.link/ipfs/bafybeihynojfvudvqsjisgqvlkhcx2fw7my4he4k6qdv5z6sjgjjayxpzm/ | calibnet (default), mainnet, butterfly gamma; gate line, "failed" label |
   | 2026-09-28 (afternoon) | https://inbrowser.link/ipfs/bafybeicy5n4zdzhnycdjktlscdxxapziqdhkvq5fyuzhztwcxpxgivya5u/ | calibnet, mainnet, butterfly gamma, with the "At a glance" block |
   | 2026-09-28 (morning) | https://inbrowser.link/ipfs/bafybeicjzly5sefxz7nyhhregr3yqfojvqusaukfvegmeqz3tc5iu527nu/ | the same |
   | 2026-09-23 (second) | https://inbrowser.link/ipfs/bafybeiemqoau7laiv2dsd62oud5ir5ufzapa2gm3g3rbfgbots43traeti/ | calibnet, mainnet, butterfly gamma |
