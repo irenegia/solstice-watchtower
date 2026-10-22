@@ -288,7 +288,7 @@ A step of the read workflow runs it on calibnet after the readers:
    Later improvement, same decision: a Goldsky subgraph for the SRA and SWA events, as the PDP explorer has,
    to shorten the delay for them. It cannot cover f02 (not a contract) or failed messages (no event).
 4. The alert, in its simplest form, built 2026-09-24 (Irene's ask, after the question how to follow the rehearsal
-   without polling): the job posts one Slack message per run that found something new on calibnet or mainnet
+   without polling): the job posts one Slack message per run that found something new on mainnet (calibnet lines were switched off on 2026-10-22, `"notify": false` in its config, after the rehearsal)
    (events, messages with their result, gaps, queued write outcomes, claim checks; routine reads left out; at most
    40 lines) to `#fil-solstice-watchtower` (first to `#fil-upgrade-filplus`, moved the same day to a channel of its own),
    through an Incoming WebHook created by TippyFlits (app `solstice-watchtower`, Irene is app collaborator). The URL is the repository secret `SLACK_WEBHOOK`; without it nothing is sent; a

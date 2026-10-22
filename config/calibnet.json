@@ -1,5 +1,7 @@
 {
   "network": "calibnet",
+  "notify": false,
+  "notifyNote": "Slack lines off since 2026-10-22 (Irene): after the rehearsal they were only our own daily Claims and SubmitShares; the page still shows calibnet in full. Remove this flag to turn them back on.",
   "rpcUrl": "https://api.calibration.node.glif.io/rpc/v1",
   "addressPrefix": "t",
   "genesisTimestamp": 1667326380,
